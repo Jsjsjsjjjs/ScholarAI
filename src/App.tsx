@@ -87,16 +87,18 @@ export default function App() {
         const userDoc = await getDoc(userDocRef);
         
         if (!userDoc.exists()) {
-          // If the user has an email but it's not verified, we might want to restrict them
-          // BUT if they are anonymous (Scholar ID), email is "none@scholarai.app" (set in Auth.tsx)
-          // or user.email is null.
-          const newData = {
+          const newData: any = {
             uid: user.uid,
             nickname: user.displayName || `Scholar-${Math.floor(1000 + Math.random() * 9000)}`,
             email: user.email || "anonymous@scholarai.app",
             joinedAt: serverTimestamp(),
             colorMode: "dark"
           };
+
+          if (user.email === "arunwarrior98789@gmail.com") {
+            newData.role = "owner";
+          }
+
           try {
             await setDoc(userDocRef, newData);
             
@@ -111,6 +113,16 @@ export default function App() {
             });
           } catch (createErr) {
             handleFirestoreError(createErr, OperationType.WRITE, "initial user/stats creation");
+          }
+        } else {
+          // Check if existing user needs promotion
+          const data = userDoc.data();
+          if (user.email === "arunwarrior98789@gmail.com" && data?.role !== "owner") {
+            try {
+              await updateDoc(userDocRef, { role: "owner" });
+            } catch (updateErr) {
+              console.error("Failed to promote owner:", updateErr);
+            }
           }
         }
 
@@ -253,15 +265,7 @@ export default function App() {
         await signInWithPopup(auth, googleProvider);
       } catch (err: any) {
         console.error("Google Login Error:", err);
-        if (err.code === "auth/operation-not-allowed") {
-          setError("Google Login is not enabled. Please enable it in the Firebase Console (Auth > Sign-in method).");
-        } else if (err.code === "auth/unauthorized-domain") {
-          setError(`This domain (${window.location.hostname}) is not authorized for Firebase Auth. Please add it to "Authorized Domains" in the Firebase Console (Auth > Settings).`);
-        } else if (err.code === "auth/popup-blocked") {
-          setError("Login popup was blocked by your browser. Please allow popups for this site.");
-        } else {
-          setError("Google Login failed. " + (err.message || ""));
-        }
+        setError("Google Login failed. " + (err.message || ""));
       } finally {
         setLoading(false);
       }

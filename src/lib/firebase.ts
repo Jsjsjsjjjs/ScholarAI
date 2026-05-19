@@ -4,7 +4,6 @@ import { getFirestore, doc, getDocFromServer, serverTimestamp, setDoc, getDoc, u
 import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
-console.log("Firebase App Initialized with Project:", firebaseConfig.projectId, "DB:", firebaseConfig.firestoreDatabaseId);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
@@ -127,7 +126,7 @@ export async function updateProgress(subject: string, topic: string, type: 'note
   }
 }
 
-async function testConnection(retries = 3) {
+async function testConnection() {
   try {
     // We try to get a document that doesn't exist to test connectivity.
     // Even if it fails with 'permission-denied', it means we REACHED the server.
@@ -136,20 +135,10 @@ async function testConnection(retries = 3) {
   } catch (error) {
     if (error instanceof Error) {
       if (error.message.includes('unavailable') || error.message.includes('the client is offline')) {
-        if (retries > 0) {
-          console.log(`Firebase connection retry ${4 - retries}...`);
-          setTimeout(() => testConnection(retries - 1), 2000);
-        } else {
-          console.error("Firebase Connection Details:", {
-            message: error.message,
-            name: error.name,
-            code: (error as any).code
-          });
-          console.error("Firebase Connection Error: Could not reach backend. Please check your project setup or wait a few moments.");
-        }
+        console.error("Firebase Connection Error: Could not reach backend. Please check your project setup or wait a few moments.");
       } else {
         // Any other error (like permission-denied) means we ARE connected.
-        console.log("Firebase reached, connection active but returned error:", error.message);
+        console.log("Firebase reached, connection active.");
       }
     }
   }

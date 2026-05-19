@@ -10,6 +10,7 @@
         "email": { "type": "string", "format": "email" },
         "joinedAt": { "type": "string", "format": "date-time" },
         "colorMode": { "type": "string", "enum": ["light", "dark"] },
+        "role": { "type": "string", "enum": ["owner", "admin", "scholar"] },
         "discordName": { "type": "string" },
         "discordUsername": { "type": "string" },
         "discordAvatar": { "type": "string" },

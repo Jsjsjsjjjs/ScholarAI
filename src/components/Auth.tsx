@@ -80,14 +80,14 @@ export default function Auth({ onLogin }: { onLogin: () => void }) {
           {error && (
             <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-500 text-xs font-bold animate-shake space-y-2">
               <p>{error}</p>
-              {(error.includes("operation-not-allowed") || error.includes("disabled") || error.includes("unauthorized-domain")) && (
+              {error.includes("Anonymous sign-in is disabled") && (
                 <a 
-                  href={`https://console.firebase.google.com/project/netflix-fix/authentication/${error.includes("unauthorized-domain") ? "settings" : "providers"}`} 
+                  href="https://console.firebase.google.com/project/outstanding-stock-6s7sz/authentication/providers" 
                   target="_blank" 
                   rel="noopener noreferrer"
                   className="block mt-2 px-3 py-2 bg-red-500/20 hover:bg-red-500/30 rounded-lg text-center transition border border-red-500/30"
                 >
-                  {error.includes("unauthorized-domain") ? "Fix Authorized Domains" : "Enable Authentication Provider"}
+                  Open Firebase Console to Enable
                 </a>
               )}
             </div>

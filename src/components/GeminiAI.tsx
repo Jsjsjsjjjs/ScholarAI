@@ -88,7 +88,6 @@ export default function GeminiAI() {
         const data = await res.json();
 
         if (res.status === 429) {
-          await trackAIUsage(0, true);
           setMessages(prev => [...prev, { 
             role: "model", 
             content: "⚠️ **QUOTA EXCEEDED**: You've reached the free tier limit (20 requests/minute). Please wait a moment or upgrade to Premium in Settings for higher limits." 

@@ -240,7 +240,6 @@ export default function TicTacToe() {
       const data = await res.json();
       
       if (res.status === 429) {
-        await trackAIUsage(0, true);
         // Use local fallback on quota error
         let fallback = localMoveLines[Math.floor(Math.random() * localMoveLines.length)];
         if (event === "end") {
