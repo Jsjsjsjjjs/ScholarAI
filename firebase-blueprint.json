@@ -1,0 +1,101 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "Stores basic user profile information and settings.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "nickname": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "joinedAt": { "type": "string", "format": "date-time" },
+        "colorMode": { "type": "string", "enum": ["light", "dark"] },
+        "discordName": { "type": "string" },
+        "discordUsername": { "type": "string" },
+        "discordAvatar": { "type": "string" },
+        "aiRequests": { "type": "integer" },
+        "totalTokens": { "type": "integer" },
+        "lastAIActivity": { "type": "string", "format": "date-time" },
+        "quotaExhausted": { "type": "boolean" },
+        "lastQuotaScan": { "type": "string", "format": "date-time" },
+        "lastSync": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "nickname", "email", "joinedAt", "colorMode"]
+    },
+    "UserStats": {
+      "title": "User Statistics",
+      "description": "Stores quiz performance and engagement metrics for the leaderboard.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "nickname": { "type": "string" },
+        "quizCorrect": { "type": "integer" },
+        "accuracy": { "type": "number" },
+        "timeSpent": { "type": "integer" },
+        "lastUpdated": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "nickname", "quizCorrect", "accuracy", "timeSpent"]
+    },
+    "DoubtMessage": {
+      "title": "Doubt Message",
+      "description": "Stores a single message in the AI doubt solver history.",
+      "type": "object",
+      "properties": {
+        "role": { "type": "string", "enum": ["user", "ai"] },
+        "content": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["role", "content", "timestamp"]
+    },
+    "TopicProgress": {
+      "title": "Topic Progress",
+      "description": "Tracks student progress on a specific topic.",
+      "type": "object",
+      "properties": {
+         "subject": { "type": "string" },
+         "topic": { "type": "string" },
+         "notesRead": { "type": "boolean" },
+         "quizTaken": { "type": "boolean" },
+         "pyqsViewed": { "type": "boolean" },
+         "lastActivity": { "type": "string", "format": "date-time" }
+      },
+      "required": ["subject", "topic", "notesRead", "quizTaken", "pyqsViewed", "lastActivity"]
+    },
+    "Reminder": {
+      "title": "Study Reminder",
+      "description": "Custom study session reminder for a student.",
+      "type": "object",
+      "properties": {
+        "topic": { "type": "string" },
+        "subject": { "type": "string" },
+        "time": { "type": "string" },
+        "date": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "completed"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["topic", "subject", "time", "date", "status", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile document."
+    },
+    "/stats/{userId}": {
+      "schema": "UserStats",
+      "description": "User statistics document used for the leaderboard."
+    },
+    "/users/{userId}/doubts/{doubtId}": {
+      "schema": "DoubtMessage",
+      "description": "History of doubts asked by the user."
+    },
+    "/users/{userId}/progress/{topicId}": {
+      "schema": "TopicProgress",
+      "description": "Progress tracking for topics."
+    },
+    "/users/{userId}/reminders/{reminderId}": {
+      "schema": "Reminder",
+      "description": "Personal study reminders."
+    }
+  }
+}

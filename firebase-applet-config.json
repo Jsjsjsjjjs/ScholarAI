@@ -1,0 +1,10 @@
+{
+  "projectId": "netflix-fix",
+  "appId": "1:434064374279:web:967e3016826c84ec5588a2",
+  "apiKey": "AIzaSyAfdIw-cuXlhr5h46iaBUG0MTfkDdDsT3Q",
+  "authDomain": "netflix-fix.firebaseapp.com",
+  "firestoreDatabaseId": "ai-studio-cfd91e25-5e39-4782-9d65-3e0672edc8e7",
+  "storageBucket": "netflix-fix.firebasestorage.app",
+  "messagingSenderId": "434064374279",
+  "measurementId": ""
+}

@@ -1,0 +1,11 @@
+{
+  "name": "ScholarAI - Elite Study Expert",
+  "description": "ScholarAI: A professional AI-powered study companion for Class 10th students featuring notes, quizzes, PYQs, and an AI doubt solver.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
