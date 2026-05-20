@@ -4,6 +4,7 @@ import Markdown from "react-markdown";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import { updateProgress, trackAIUsage } from "../lib/firebase";
+import { generateImportantQuestions } from "../lib/gemini";
 import { cn } from "../lib/utils";
 
 export default function ImportantQuestions() {
@@ -19,28 +20,21 @@ export default function ImportantQuestions() {
     if (!topic) return;
     setLoading(true);
     try {
-      const res = await fetch("/api/generate-important-questions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ topic, subject, numQuestions }),
-      });
-
-      if (res.status === 429) {
-        setContent("# ⚠️ AI Quota Reached\n\nGeneration limit reached. Please wait a minute and try again. You can check your remaining tokens in Settings.");
-        await trackAIUsage(0, true);
-        setLoading(false);
-        return;
-      }
-
-      const data = await res.json();
+      const notesContent = await generateImportantQuestions(subject, topic, numQuestions);
 
       // Track usage
-      await trackAIUsage(data.content.length * 4);
+      await trackAIUsage(notesContent.length * 4);
 
-      setContent(data.content);
+      setContent(notesContent);
       updateProgress(subject, topic, "pyqsViewed");
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      if (err.status === 429 || err.message?.includes("429")) {
+        setContent("# ⚠️ AI Quota Reached\n\nGeneration limit reached. Please wait a minute and try again. You can check your remaining tokens in Settings.");
+        await trackAIUsage(0, true);
+      } else {
+        setContent(`# ⚠️ Generation Failed\n\nFailed to compile questions. Details: ${err.message || String(err)}`);
+      }
     } finally {
       setLoading(false);
     }

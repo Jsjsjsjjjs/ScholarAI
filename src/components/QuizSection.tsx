@@ -1,11 +1,13 @@
-import { useState } from "react";
-import { BrainCircuit, Loader2, CheckCircle2, XCircle, Info, Trophy, RotateCcw } from "lucide-react";
+import { useState, useEffect } from "react";
+import { BrainCircuit, Loader2, CheckCircle2, XCircle, Info, Trophy, RotateCcw, WifiOff } from "lucide-react";
 import { db, auth, serverTimestamp, handleFirestoreError, OperationType, updateProgress, trackAIUsage } from "../lib/firebase";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import Markdown from "react-markdown";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import { cn } from "../lib/utils";
+import { generateQuiz as clientGenerateQuiz } from "../lib/gemini";
+import { useOnlineStatus, saveQuizToCache, getQuizFromCache, getAllCachedQuizzes, CachedQuiz } from "../lib/offlineCache";
 
 interface Question {
   question: string;
@@ -26,6 +28,13 @@ export default function QuizSection() {
   const [score, setScore] = useState(0);
   const [showResult, setShowResult] = useState(false);
   const [showExplanation, setShowExplanation] = useState(false);
+  const [cachedQuizzesList, setCachedQuizzesList] = useState<CachedQuiz[]>([]);
+  
+  const isOnline = useOnlineStatus();
+
+  useEffect(() => {
+    setCachedQuizzesList(getAllCachedQuizzes());
+  }, [questions]);
 
   const subjects = ["Hindi", "English", "Science", "Math", "SST"];
   const difficulties = ["Easy", "Medium", "Hard", "Expert"];
@@ -38,32 +47,49 @@ export default function QuizSection() {
     setScore(0);
     setShowResult(false);
     try {
-      const res = await fetch("/api/generate-quiz", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ subject, topic, numQuestions, difficulty }),
-      });
-
-      if (res.status === 429) {
-        setQuestions([{
-          question: "# ⚠️ AI Quota Reached\n\nYou've exhausted the free daily generation limit. Please wait a moment or upgrade in Settings.",
-          options: ["Try again in 60s", "Check Quota in Settings", "Upgrade to Premium"],
-          correctAnswer: "Check Quota in Settings",
-          explanation: "The Gemini-3-Flash model has a rate limit of 20 requests per minute on the free tier. This ensures the service remains available for everyone."
-        }]);
-        await trackAIUsage(0, true);
-        setLoading(false);
-        return;
+      if (!isOnline) {
+        const cached = getQuizFromCache(subject, topic, difficulty);
+        if (cached) {
+          setQuestions(cached);
+          setLoading(false);
+          return;
+        } else {
+          setQuestions([{
+            question: `# ⚠️ Topic Not Cached Offline\n\nYou are currently offline, and a quiz on **${topic}** (${difficulty}) has not been cached yet. Please take a recently saved quiz from below.`,
+            options: ["Take Cached Quiz Below", "Go Back", "Connect to internet"],
+            correctAnswer: "Take Cached Quiz Below",
+            explanation: "In order to build high-fidelity interactive academic question pipelines with step-by-step explanations, an active Gemini network stream is required."
+          }]);
+          setLoading(false);
+          return;
+        }
       }
 
-      const data = await res.json();
+      const generatedQuestions = await clientGenerateQuiz(subject, topic, numQuestions, difficulty);
       
       // Track usage
       await trackAIUsage(numQuestions * 500);
 
-      setQuestions(data);
-    } catch (err) {
+      setQuestions(generatedQuestions);
+      saveQuizToCache(subject, topic, difficulty, numQuestions, generatedQuestions);
+    } catch (err: any) {
       console.error(err);
+      if (err.status === 429 || err.message?.includes("429")) {
+        setQuestions([{
+          question: "# ⚠️ AI Quota Reached\n\nYou've exhausted the free daily generation limit. Please wait a moment and try again.",
+          options: ["Await Cool-down", "Go Back", "Check Settings"],
+          correctAnswer: "Await Cool-down",
+          explanation: "Free API keys have active quotas. You can safely try again or inspect parameters on your connection profiles."
+        }]);
+        await trackAIUsage(0, true);
+      } else {
+        setQuestions([{
+          question: `# ⚠️ Generation Failed\n\nFailed to compile quiz structure. Details: ${err.message || String(err)}`,
+          options: ["Retry Generation", "Select Different Difficulty", "Contact Support"],
+          correctAnswer: "Retry Generation",
+          explanation: "There might have been an error parsing the JSON response from the model. Click retry or check other topic strings."
+        }]);
+      }
     } finally {
       setLoading(false);
     }
@@ -232,80 +258,119 @@ export default function QuizSection() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto p-8 bg-neutral-900 rounded-3xl border border-neutral-800">
-      <h2 className="text-2xl font-bold mb-8 flex items-center gap-3">
-        <BrainCircuit className="text-orange-500" size={32} />
-        ScholarAI Quiz Generator
-      </h2>
+    <div className="max-w-4xl mx-auto space-y-6">
+      {!isOnline && (
+        <div className="bg-amber-500/10 border border-amber-500/20 text-amber-500 rounded-2xl p-4 flex items-center gap-3 font-semibold text-xs animate-in slide-in-from-top-4 duration-300">
+          <WifiOff size={16} className="shrink-0" />
+          <span>Offline Mode: Showing cached quizzes. Connect to the internet to create fresh, custom AI questions.</span>
+        </div>
+      )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
-        <div className="space-y-4">
-          <label className="text-sm font-bold text-neutral-500 uppercase">Subject</label>
-          <div className="grid grid-cols-3 gap-2">
-            {subjects.map(s => (
-              <button
-                key={s}
-                onClick={() => setSubject(s)}
-                className={cn(
-                  "py-2 rounded-xl border text-sm font-bold transition-all",
-                  subject === s ? "bg-orange-500 border-orange-500 text-white" : "bg-neutral-800 border-neutral-700 text-neutral-400"
-                )}
-              >
-                {s}
-              </button>
-            ))}
+      <div className="p-8 bg-neutral-900 rounded-3xl border border-neutral-800 shadow-xl">
+        <h2 className="text-2xl font-bold mb-8 flex items-center gap-3">
+          <BrainCircuit className="text-orange-500" size={32} />
+          ScholarAI Quiz Generator
+        </h2>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+          <div className="space-y-4">
+            <label className="text-sm font-bold text-neutral-500 uppercase">Subject</label>
+            <div className="grid grid-cols-3 gap-2">
+              {subjects.map(s => (
+                <button
+                  key={s}
+                  onClick={() => setSubject(s)}
+                  className={cn(
+                    "py-2 rounded-xl border text-sm font-bold transition-all",
+                    subject === s ? "bg-orange-500 border-orange-500 text-white" : "bg-neutral-800 border-neutral-700 text-neutral-400"
+                  )}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <label className="text-sm font-bold text-neutral-500 uppercase tracking-widest">Topic or Chapter</label>
+            <input 
+              type="text" 
+              value={topic}
+              onChange={(e) => setTopic(e.target.value)}
+              placeholder="e.g. Electric Current, Polynomials..."
+              className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-4 py-3 focus:ring-2 focus:ring-orange-500 outline-none"
+            />
+          </div>
+
+          <div className="space-y-4">
+            <label className="text-sm font-bold text-neutral-500 uppercase tracking-widest">Questions ({numQuestions})</label>
+            <input 
+              type="range" 
+              min="3" 
+              max="15" 
+              value={numQuestions}
+              onChange={(e) => setNumQuestions(parseInt(e.target.value))}
+              className="w-full accent-orange-500"
+            />
+          </div>
+
+          <div className="space-y-4">
+            <label className="text-sm font-bold text-neutral-500 uppercase tracking-widest">Select Difficulty</label>
+            <div className="flex gap-2">
+              {difficulties.map(d => (
+                <button
+                  key={d}
+                  onClick={() => setDifficulty(d)}
+                  className={cn(
+                    "flex-1 py-2 rounded-xl border text-xs font-bold transition-all",
+                    difficulty === d ? "bg-orange-500 border-orange-500 text-white" : "bg-neutral-800 border-neutral-700 text-neutral-400"
+                  )}
+                >
+                  {d}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
-        <div className="space-y-4">
-          <label className="text-sm font-bold text-neutral-500 uppercase tracking-widest">Topic or Chapter</label>
-          <input 
-            type="text" 
-            value={topic}
-            onChange={(e) => setTopic(e.target.value)}
-            placeholder="e.g. Electric Current, Polynomials..."
-            className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-4 py-3 focus:ring-2 focus:ring-orange-500 outline-none"
-          />
-        </div>
+        <button
+          onClick={startQuiz}
+          disabled={!topic}
+          className="w-full py-5 bg-white text-black font-black text-lg rounded-2xl hover:bg-neutral-200 transition disabled:opacity-50 shadow-xl"
+        >
+          GENERATE CUSTOM QUIZ
+        </button>
 
-        <div className="space-y-4">
-          <label className="text-sm font-bold text-neutral-500 uppercase tracking-widest">Questions ({numQuestions})</label>
-          <input 
-            type="range" 
-            min="3" 
-            max="15" 
-            value={numQuestions}
-            onChange={(e) => setNumQuestions(parseInt(e.target.value))}
-            className="w-full accent-orange-500"
-          />
-        </div>
-
-        <div className="space-y-4">
-          <label className="text-sm font-bold text-neutral-500 uppercase tracking-widest">Select Difficulty</label>
-          <div className="flex gap-2">
-            {difficulties.map(d => (
-              <button
-                key={d}
-                onClick={() => setDifficulty(d)}
-                className={cn(
-                  "flex-1 py-2 rounded-xl border text-xs font-bold transition-all",
-                  difficulty === d ? "bg-orange-500 border-orange-500 text-white" : "bg-neutral-800 border-neutral-700 text-neutral-400"
-                )}
-              >
-                {d}
-              </button>
-            ))}
+        {cachedQuizzesList.length > 0 && (
+          <div className="mt-8 pt-6 border-t border-neutral-800">
+            <h3 className="text-xs font-black uppercase text-neutral-500 tracking-wider mb-4">Recently Saved Offline Quizzes</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+              {cachedQuizzesList.map((item, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => {
+                    setSubject(item.subject);
+                    setTopic(item.topic);
+                    setDifficulty(item.difficulty);
+                    setNumQuestions(item.numQuestions);
+                    setQuestions(item.questions);
+                    setCurrentIdx(0);
+                    setScore(0);
+                    setShowResult(false);
+                  }}
+                  className="p-3 bg-neutral-800/50 hover:bg-neutral-800 border border-neutral-800 hover:border-orange-500/30 rounded-xl text-left transition text-xs"
+                >
+                  <p className="font-bold text-neutral-300 truncate">{item.topic}</p>
+                  <div className="flex items-center justify-between mt-1 text-[10px] text-neutral-500 uppercase">
+                    <span>{item.subject} • Q({item.numQuestions})</span>
+                    <span className="font-extrabold text-orange-400">{item.difficulty}</span>
+                  </div>
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
       </div>
-
-      <button
-        onClick={startQuiz}
-        disabled={!topic}
-        className="w-full py-5 bg-white text-black font-black text-lg rounded-2xl hover:bg-neutral-200 transition disabled:opacity-50 shadow-xl"
-      >
-        GENERATE CUSTOM QUIZ
-      </button>
     </div>
   );
 }

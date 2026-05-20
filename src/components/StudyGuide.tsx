@@ -1,10 +1,12 @@
-import { useState, useRef } from "react";
-import { Search, Book, FileText, Loader2, Sparkles, ChevronRight, Download, PenTool, Image as ImageIcon, FileOutput } from "lucide-react";
+import { useState, useRef, useEffect } from "react";
+import { Search, Book, FileText, Loader2, Sparkles, ChevronRight, Download, PenTool, Image as ImageIcon, FileOutput, WifiOff } from "lucide-react";
 import Markdown from "react-markdown";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import { cn } from "../lib/utils";
 import { updateProgress, trackAIUsage } from "../lib/firebase";
+import { generateNotes as clientGenerateNotes } from "../lib/gemini";
+import { useOnlineStatus, saveNotesToCache, getNotesFromCache, getAllCachedNotes, CachedNotes } from "../lib/offlineCache";
 import { toPng } from 'html-to-image';
 import jsPDF from "jspdf";
 
@@ -15,36 +17,53 @@ export default function StudyGuide() {
   const [notes, setNotes] = useState<string | null>(null);
   const [activeType, setActiveType] = useState<"one-page" | "full">("one-page");
   const [isHandwritten, setIsHandwritten] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [cachedNotesList, setCachedNotesList] = useState<CachedNotes[]>([]);
   const notesRef = useRef<HTMLDivElement>(null);
+  const isOnline = useOnlineStatus();
+
+  useEffect(() => {
+    setCachedNotesList(getAllCachedNotes());
+  }, [notes]);
 
   const generateNotes = async (type: "one-page" | "full") => {
     if (!topic) return;
     setLoading(true);
     setActiveType(type);
+    setExportError(null);
     try {
-      const res = await fetch("/api/generate-notes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ topic, subject, type }),
-      });
-
-      if (res.status === 429) {
-        setNotes("# ⚠️ AI Quota Reached\n\nYou've exhausted the free generation limit. Please wait 60 seconds before generating more notes. You can monitor your quota in the Settings tab.");
-        await trackAIUsage(0, true);
-        setLoading(false);
-        return;
+      if (!isOnline) {
+        const cached = getNotesFromCache(subject, topic, type);
+        if (cached) {
+          setNotes(cached);
+          updateProgress(subject, topic, "notesRead");
+          setLoading(false);
+          return;
+        } else {
+          setNotes(`# ⚠️ Topic Not Cached Offline\n\nYou are currently offline, and notes for **${topic}** (${subject} - ${type === 'one-page' ? 'One Page' : 'Full Notes'}) are not available. Please connect to the internet to generate this guide.`);
+          setLoading(false);
+          return;
+        }
       }
 
-      const data = await res.json();
+      const noteContent = await clientGenerateNotes(subject, topic, type);
       
       // Track usage
-      await trackAIUsage(data.content.length * 4);
+      await trackAIUsage(noteContent.length * 4);
 
-      setNotes(data.content);
+      setNotes(noteContent);
+      saveNotesToCache(subject, topic, type, noteContent);
+      
       // Track progress
       updateProgress(subject, topic, "notesRead");
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      if (err.status === 429 || err.message?.includes("429")) {
+        setNotes("# ⚠️ AI Quota Reached\n\nYou've exhausted the free generation limit. Please wait an active minute before generating more notes.");
+        await trackAIUsage(0, true);
+      } else {
+        setNotes(`# ⚠️ Generation Failed\n\nFailed to assemble the guide. Details: ${err.message || String(err)}. Check your model config or try another topic.`);
+      }
     } finally {
       setLoading(false);
     }
@@ -62,6 +81,7 @@ export default function StudyGuide() {
 
   const exportAsImage = async () => {
     if (!notesRef.current) return;
+    setExportError(null);
     try {
       const dataUrl = await toPng(notesRef.current, {
         backgroundColor: isHandwritten ? "#fff9e6" : "#0d0d0d",
@@ -74,13 +94,14 @@ export default function StudyGuide() {
       a.click();
     } catch (err) {
       console.error("Export failed:", err);
-      alert("Failed to export as image.");
+      setExportError("⚠️ Failed to export as image. Browser viewport might be too small.");
     }
   };
 
   const exportAsPDF = async () => {
     if (!notesRef.current) return;
     setLoading(true);
+    setExportError(null);
     try {
       const dataUrl = await toPng(notesRef.current, {
         backgroundColor: isHandwritten ? "#fff9e6" : "#0d0d0d",
@@ -115,7 +136,7 @@ export default function StudyGuide() {
       pdf.save(`${topic.replace(/\s+/g, '-').toLowerCase()}_notes.pdf`);
     } catch (err) {
       console.error("PDF Export failed:", err);
-      alert("Failed to export as PDF.");
+      setExportError("⚠️ Failed to export as PDF. Let's try downloading modern Markdown .md file configuration instead.");
     } finally {
       setLoading(false);
     }
@@ -125,6 +146,13 @@ export default function StudyGuide() {
 
   return (
     <div className="space-y-8">
+      {!isOnline && (
+        <div className="bg-amber-500/10 border border-amber-500/20 text-amber-500 rounded-2xl p-4 flex items-center gap-3 font-semibold text-xs animate-in slide-in-from-top-4 duration-300">
+          <WifiOff size={16} className="shrink-0" />
+          <span>Offline Mode: Showing cached guides. Connect to the internet to generate new topics.</span>
+        </div>
+      )}
+
       <div className="bg-neutral-900 border border-neutral-800 rounded-3xl p-8 shadow-xl">
         <h2 className="text-2xl font-bold mb-6 flex items-center gap-2">
           <Book className="text-orange-500" />
@@ -185,6 +213,32 @@ export default function StudyGuide() {
             Generate Full Notes
           </button>
         </div>
+
+        {cachedNotesList.length > 0 && (
+          <div className="mt-8 pt-6 border-t border-neutral-800">
+            <h3 className="text-xs font-black uppercase text-neutral-500 tracking-wider mb-3">Recently Saved Offline Guides</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+              {cachedNotesList.map((item, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => {
+                    setSubject(item.subject);
+                    setTopic(item.topic);
+                    setActiveType(item.type);
+                    setNotes(item.content);
+                  }}
+                  className="p-3 bg-neutral-800/50 hover:bg-neutral-800 border border-neutral-800 hover:border-orange-500/30 rounded-xl text-left transition text-xs"
+                >
+                  <p className="font-bold text-neutral-300 truncate">{item.topic}</p>
+                  <div className="flex items-center justify-between mt-1 text-[10px] text-neutral-500 uppercase">
+                    <span>{item.subject}</span>
+                    <span className="font-bold text-orange-400">{item.type === 'one-page' ? 'Summary' : 'In-depth'}</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {notes && (
@@ -222,6 +276,13 @@ export default function StudyGuide() {
               PDF
             </button>
           </div>
+
+          {exportError && (
+            <div className="p-3 bg-red-500/10 border border-red-500/20 text-red-500 rounded-xl text-xs font-medium flex items-center justify-between">
+              <span>{exportError}</span>
+              <button onClick={() => setExportError(null)} className="hover:text-red-400 font-bold ml-2">Dismiss</button>
+            </div>
+          )}
 
           <div 
             ref={notesRef}

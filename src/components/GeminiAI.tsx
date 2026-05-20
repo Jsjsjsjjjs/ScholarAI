@@ -20,6 +20,7 @@ import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import { cn } from "../lib/utils";
 import { trackAIUsage } from "../lib/firebase";
+import { chatGemini, generateImageDescription } from "../lib/gemini";
 
 interface Message {
   role: "user" | "model";
@@ -56,12 +57,7 @@ export default function GeminiAI() {
 
     try {
       if (mode === "image") {
-        const res = await fetch("/api/gemini/generate-image", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt: input })
-        });
-        const data = await res.json();
+        const data = await generateImageDescription(input);
         
         await trackAIUsage(250); // Default for image desc
 
@@ -72,36 +68,31 @@ export default function GeminiAI() {
           imageUrl: data.placeholderUrl 
         }]);
       } else {
-        const res = await fetch("/api/gemini/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ 
-            messages: messages.concat(userMessage).map(m => ({
-              role: m.role,
-              parts: [{ text: m.content }]
-            })),
-            systemInstruction: mode === "code" 
-              ? "You are a senior software engineer. Provide high-quality, production-ready code blocks and architectural advice."
-              : "You are an all-rounder AI assistant. You are capable of handling complex multivariable tasks including code, PDFs (via markdown), and deep analysis."
-          })
-        });
-        const data = await res.json();
+        const systemInstruction = mode === "code" 
+          ? "You are a senior software engineer. Provide high-quality, production-ready code blocks and architectural advice."
+          : "You are an all-rounder AI assistant. You are capable of handling complex multivariable tasks including code, PDFs (via markdown), and deep analysis.";
 
-        if (res.status === 429) {
-          setMessages(prev => [...prev, { 
-            role: "model", 
-            content: "⚠️ **QUOTA EXCEEDED**: You've reached the free tier limit (20 requests/minute). Please wait a moment or upgrade to Premium in Settings for higher limits." 
-          }]);
-          setLoading(false);
-          return;
-        }
+        const payload = messages.concat(userMessage).map(m => ({
+          role: m.role,
+          parts: [{ text: m.content }]
+        }));
 
-        await trackAIUsage(data.text.length * 4);
+        const answer = await chatGemini(payload, systemInstruction);
 
-        setMessages(prev => [...prev, { role: "model", content: data.text }]);
+        await trackAIUsage(answer.length * 4);
+
+        setMessages(prev => [...prev, { role: "model", content: answer }]);
       }
-    } catch (err) {
-      setMessages(prev => [...prev, { role: "model", content: "I encountered an error connecting to the central intelligence hub. Please try again." }]);
+    } catch (err: any) {
+      console.error(err);
+      if (err.status === 429 || err.message?.includes("429")) {
+        setMessages(prev => [...prev, { 
+          role: "model", 
+          content: "⚠️ **QUOTA EXCEEDED**: You've reached the free tier limit. Please wait a moment before trying again." 
+        }]);
+      } else {
+        setMessages(prev => [...prev, { role: "model", content: `I encountered an error connecting to the central intelligence hub. Details: ${err.message || String(err)}` }]);
+      }
     } finally {
       setLoading(false);
     }

@@ -4,6 +4,7 @@ import { db, auth, signOut, handleFirestoreError, OperationType, syncEliteQuota 
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { motion } from "motion/react";
 import { cn } from "../lib/utils";
+import { smartFix } from "../lib/gemini";
 
 export default function Settings({ userData }: { userData: any }) {
   const [nickname, setNickname] = useState(userData?.nickname || "");
@@ -18,9 +19,10 @@ export default function Settings({ userData }: { userData: any }) {
   const [discordError, setDiscordError] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [refreshLogs, setRefreshLogs] = useState<string[]>([]);
+  const [showUpgradeInstructions, setShowUpgradeInstructions] = useState(false);
 
   const handleUpgrade = () => {
-    alert("To upgrade to a Paid Model, please message the ScholarAI Agent in the chat: 'I want to upgrade to a paid model'.");
+    setShowUpgradeInstructions(true);
   };
 
   const forceRefreshQuota = async () => {
@@ -56,33 +58,47 @@ export default function Settings({ userData }: { userData: any }) {
   };
 
   useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
-      const origin = event.origin;
-      if (!origin.endsWith('.run.app') && !origin.includes('localhost')) {
-        return;
-      }
-      if (event.data?.type === 'DISCORD_AUTH_SUCCESS' && event.data.payload) {
-        const { name, username, avatar } = event.data.payload;
-        setDiscordName(name);
-        setDiscordUsername(username);
-        setDiscordAvatar(avatar);
+    // Capture access token from URL hash (Implicit Grant redirect from Discord)
+    const hash = window.location.hash;
+    if (hash && hash.includes("access_token")) {
+      const params = new URLSearchParams(hash.substring(1));
+      const accessToken = params.get("access_token");
+      if (accessToken) {
+        // Clear hash from address bar
+        window.history.replaceState(null, "", window.location.pathname + window.location.search);
+        
         setDiscordError(null);
+        // Fetch profile details directly from Discord API
+        fetch("https://discord.com/api/users/@me", {
+          headers: { Authorization: `Bearer ${accessToken}` }
+        })
+          .then(async (res) => {
+            if (!res.ok) throw new Error("Could not load account details from Discord.");
+            const data = await res.json();
+            setDiscordName(data.global_name || data.username);
+            setDiscordUsername(data.username);
+            setDiscordAvatar(data.avatar ? `https://cdn.discordapp.com/avatars/${data.id}/${data.avatar}.png` : "");
+          })
+          .catch((err) => {
+            console.error("Discord error:", err);
+            setDiscordError("Failed to fetch Discord profile client-side.");
+          });
       }
-    };
-    window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
+    }
   }, []);
 
   const handleLinkDiscord = async () => {
     setDiscordError(null);
     try {
-      const origin = window.location.origin;
-      const res = await fetch(`/api/auth/discord/url?origin=${encodeURIComponent(origin)}`);
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || "Discord authentication service unavailable.");
+      const clientId = process.env.DISCORD_CLIENT_ID;
+      if (!clientId) {
+        throw new Error("Discord API is not configured. Please set DISCORD_CLIENT_ID in settings.");
       }
-      const { url } = await res.json();
+      
+      const origin = window.location.origin;
+      const redirectUri = `${origin}/settings`; // Or whichever is active
+      const url = `https://discord.com/api/oauth2/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=token&scope=identify`;
+      
       window.open(url, 'discord_auth', 'width=500,height=800');
     } catch (err: any) {
       console.error("Link Discord error:", err);
@@ -147,18 +163,10 @@ export default function Settings({ userData }: { userData: any }) {
         await new Promise(r => setTimeout(r, 600));
       }
 
-      const res = await fetch("/api/smart-fix", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          errorContext: `User ID: ${userData?.uid || 'guest'}. Full System Scan requested to fix all formatting and sync errors.` 
-        })
-      });
-      const data = await res.json();
+      const errorContext = `User ID: ${userData?.uid || 'guest'}. Full System Scan requested to fix all formatting and sync errors.`;
+      let resultText = await smartFix(errorContext);
       
-      // If health check shows missing discord, remind them
-      let resultText = data.analysis;
-      if (data.health && !data.health.discord) {
+      if (!process.env.DISCORD_CLIENT_ID) {
         resultText += "\n\n⚠️ SYSTEM ALERT: Discord Client Identity is not configured in the environment. Social linking will be restricted until the administrator adds DISCORD_CLIENT_ID.";
       }
       
@@ -200,13 +208,28 @@ export default function Settings({ userData }: { userData: any }) {
               Upgrade to a Paid Model for 5x more tokens, faster response times, and priority access to new models like Gemini 3 Pro.
             </p>
             
-            <button 
-              onClick={handleUpgrade}
-              className="w-full py-4 bg-blue-600 text-white font-black rounded-2xl flex items-center justify-center gap-3 hover:bg-blue-700 transition-all hover:shadow-lg hover:shadow-blue-500/20"
-            >
-              <CreditCard size={20} />
-              Upgrade to Premium
-            </button>
+            {showUpgradeInstructions ? (
+              <div className="p-4 bg-blue-500/10 border border-blue-500/30 text-blue-400 rounded-2xl text-sm font-medium animate-in fade-in zoom-in-95 duration-200">
+                <p className="mb-2 font-bold">💎 How to Upgrade:</p>
+                <p className="leading-relaxed">
+                  Please message the ScholarAI Agent directly in the chat with the phrase: <strong className="text-white">"I want to upgrade to a paid model."</strong> Our system will immediately configure elite high-latency buffers for your session.
+                </p>
+                <button 
+                  onClick={() => setShowUpgradeInstructions(false)} 
+                  className="mt-3 text-xs bg-blue-600 hover:bg-blue-700 text-white font-black px-3 py-1.5 rounded-lg transition"
+                >
+                  Go Back
+                </button>
+              </div>
+            ) : (
+              <button 
+                onClick={handleUpgrade}
+                className="w-full py-4 bg-blue-600 text-white font-black rounded-2xl flex items-center justify-center gap-3 hover:bg-blue-700 transition-all hover:shadow-lg hover:shadow-blue-500/20"
+              >
+                <CreditCard size={20} />
+                Upgrade to Premium
+              </button>
+            )}
           </div>
         </div>
 

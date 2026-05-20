@@ -7,6 +7,7 @@ import rehypeKatex from "rehype-katex";
 import { cn } from "../lib/utils";
 import { auth, db, serverTimestamp, handleFirestoreError, OperationType, trackAIUsage } from "../lib/firebase";
 import { collection, addDoc, query, orderBy, onSnapshot, limit } from "firebase/firestore";
+import { solveDoubt as clientSolveDoubt } from "../lib/gemini";
 
 export default function DoubtSolver() {
   const [isOpen, setIsOpen] = useState(false);
@@ -14,6 +15,7 @@ export default function DoubtSolver() {
   const [image, setImage] = useState<string | null>(null);
   const [history, setHistory] = useState<{ role: 'user' | 'ai', content: string }[]>([]);
   const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -68,37 +70,19 @@ export default function DoubtSolver() {
         handleFirestoreError(fErr, OperationType.WRITE, `users/${user.uid}/doubts`);
       }
 
-      const res = await fetch("/api/solve-doubt", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          query: currentQuery || "Please explain this image and solve any problems shown.", 
-          image 
-        }),
-      });
-
-      if (res.status === 429) {
-        alert("⚠️ AI QUOTA REACHED: You've exhausted the free daily limit. Please wait a minute or upgrade in Settings for higher limits.");
-        await trackAIUsage(0, true);
-        setLoading(false);
-        return;
-      }
-
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`SERVER_ERROR: ${res.status}. ${text.substring(0, 50)}`);
-      }
-
-      const data = await res.json();
+      const answer = await clientSolveDoubt(
+        currentQuery || "Please explain this image and solve any problems shown.",
+        image
+      );
       
       // Track usage
-      await trackAIUsage(data.answer.length * 4);
+      await trackAIUsage(answer.length * 4);
 
       // Save AI response
       try {
         await addDoc(doubtsRef, {
           role: 'ai',
-          content: data.answer,
+          content: answer,
           timestamp: serverTimestamp()
         });
       } catch (fErr) {
@@ -108,11 +92,11 @@ export default function DoubtSolver() {
       setImage(null);
     } catch (err: any) {
       console.error("Solve doubt error:", err);
-      if (err.message?.includes("API_ERROR") || err.message?.includes("Unexpected token") || err.message?.includes("SERER_ERROR")) {
-        alert("The question content is too large or there was a server error. Please try a smaller image or shorter text.");
+      if (err.status === 429 || err.message?.includes("429")) {
+        setErrorMessage("⚠️ Quota Reached: Daily free limit exhausted. Please try again soon or check Settings.");
+        await trackAIUsage(0, true);
       } else {
-        // Fallback for unexpected errors
-        alert("Failed to solve doubt. Error: " + (err.message || String(err)));
+        setErrorMessage(`⚠️ Failed to solve doubt. Details: ${err.message || String(err)}`);
       }
     } finally {
       setLoading(false);
@@ -192,6 +176,14 @@ export default function DoubtSolver() {
 
             {/* Input Area */}
             <div className="p-4 border-t border-neutral-800 space-y-3">
+              {errorMessage && (
+                <div className="p-2.5 bg-red-500/10 border border-red-500/20 text-red-500 rounded-xl text-xs flex items-center justify-between">
+                  <span>{errorMessage}</span>
+                  <button onClick={() => setErrorMessage(null)} className="hover:text-red-400">
+                    <X size={14} />
+                  </button>
+                </div>
+              )}
               {image && (
                 <div className="relative inline-block">
                   <img src={image} alt="preview" className="h-16 w-16 rounded-xl object-cover border-2 border-orange-500" />

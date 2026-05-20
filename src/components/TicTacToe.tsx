@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { trackAIUsage } from "../lib/firebase";
+import { chatGemini } from "../lib/gemini";
 
 type Player = "X" | "O" | null;
 type Difficulty = "Easy" | "Medium" | "Impossible";
@@ -228,32 +229,22 @@ export default function TicTacToe() {
       if (event === "end") context = `The game ended. Result: ${result === "X" ? "User Won" : result === "O" ? "AI Won" : "Draw"}. Provide a short concluding remark as an Elite AI tutor.`;
       if (event === "chat") context = `The user said: "${input}". Answer them while maintaining your persona as a competitive Tic-Tac-Toe playing Elite AI tutor. Current board: [${boardState}]`;
 
-      const res = await fetch("/api/gemini/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages: [{ role: "user", parts: [{ text: context }] }],
-          systemInstruction: "You are ScholarAI Elite. You are currently playing Tic-Tac-Toe against a student. You are competitive, slightly sassy but always educational. Keep your responses very short (1 sentence max)."
-        })
-      });
-      
-      const data = await res.json();
-      
-      if (res.status === 429) {
-        // Use local fallback on quota error
-        let fallback = localMoveLines[Math.floor(Math.random() * localMoveLines.length)];
-        if (event === "end") {
-           if (result === "X") fallback = localWinLines[Math.floor(Math.random() * localWinLines.length)];
-           if (result === "O") fallback = localLossLines[Math.floor(Math.random() * localLossLines.length)];
-           if (result === "Draw") fallback = localDrawLines[Math.floor(Math.random() * localDrawLines.length)];
-        }
-        setChat(prev => [...prev, { role: "ai", text: `[Quota Note: Limits reached, using offline logic] ${fallback}` }]);
-      } else if (data.text) {
-        await trackAIUsage(data.text.length * 4);
-        setChat(prev => [...prev, { role: "ai", text: data.text }]);
+      const systemInstruction = "You are ScholarAI Elite. You are currently playing Tic-Tac-Toe against a student. You are competitive, slightly sassy but always educational. Keep your responses very short (1 sentence max).";
+      const messagesPayload = [{ role: "user", parts: [{ text: context }] }];
+      const answer = await chatGemini(messagesPayload, systemInstruction);
+
+      await trackAIUsage(answer.length * 4);
+      setChat(prev => [...prev, { role: "ai", text: answer }]);
+    } catch (err: any) {
+      console.error("AI Talk error:", err);
+      // Use local fallback
+      let fallback = localMoveLines[Math.floor(Math.random() * localMoveLines.length)];
+      if (event === "end") {
+         if (result === "X") fallback = localWinLines[Math.floor(Math.random() * localWinLines.length)];
+         if (result === "O") fallback = localLossLines[Math.floor(Math.random() * localLossLines.length)];
+         if (result === "Draw") fallback = localDrawLines[Math.floor(Math.random() * localDrawLines.length)];
       }
-    } catch (e) {
-      console.error("AI Talk error:", e);
+      setChat(prev => [...prev, { role: "ai", text: `[Fallback Mode] ${fallback}` }]);
     }
   };
 
