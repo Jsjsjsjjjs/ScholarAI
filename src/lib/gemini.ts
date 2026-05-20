@@ -2,16 +2,28 @@ import { GoogleGenAI, Type } from "@google/genai";
 
 // WARNING: Handling API keys client-side has security implications as keys are exposed to the browser.
 // This refactoring has been performed per explicit user request to support client-only deployments (e.g. Netlify static hosting).
-const apiKey = process.env.GEMINI_API_KEY || "";
+let _aiInstance: GoogleGenAI | null = null;
 
-export const ai = new GoogleGenAI({
-  apiKey: apiKey,
-  httpOptions: {
-    headers: {
-      'User-Agent': 'aistudio-build',
-    }
+function getAI() {
+  if (!_aiInstance) {
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY || "AIzaSyAfdIw-cuXlhr5h46iaBUG0MTfkDdDsT3Q";
+    _aiInstance = new GoogleGenAI({
+      apiKey: apiKey,
+      httpOptions: {
+        headers: {
+          'User-Agent': "aistudio-build",
+        }
+      }
+    });
   }
-});
+  return _aiInstance;
+}
+
+export const ai = {
+  get models() {
+    return getAI().models;
+  }
+};
 
 export const SYSTEM_PROMPT = `You are ScholarAI Expert, the world's most advanced AI Educational System powered by Gemini. 
 Your objective is to provide Class 10th students with high-fidelity, scientifically accurate, and perfectly formatted educational content.
