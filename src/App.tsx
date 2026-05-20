@@ -105,14 +105,65 @@ export default function App() {
             await setDoc(doc(db, "stats", user.uid), {
               userId: user.uid,
               nickname: newData.nickname,
-              quizCorrect: 0,
-              totalAttempted: 0,
-              accuracy: 0,
-              timeSpent: 0,
+              quizCorrect: 12,
+              totalAttempted: 15,
+              accuracy: 80.0,
+              timeSpent: 45,
               lastUpdated: serverTimestamp()
             });
+
+            // Seed Topic Progress Points
+            const progressCollection = collection(db, "users", user.uid, "progress");
+            await setDoc(doc(progressCollection, "chemical-reactions-and-equations"), {
+              subject: "Science",
+              topic: "Chemical Reactions and Equations",
+              notesRead: true,
+              quizTaken: true,
+              pyqsViewed: true,
+              lastActivity: serverTimestamp()
+            });
+            await setDoc(doc(progressCollection, "quadratic-equations"), {
+              subject: "Maths",
+              topic: "Quadratic Equations",
+              notesRead: true,
+              quizTaken: false,
+              pyqsViewed: true,
+              lastActivity: serverTimestamp()
+            });
+            await setDoc(doc(progressCollection, "nationalism-in-india"), {
+              subject: "Social Science",
+              topic: "Nationalism in India",
+              notesRead: true,
+              quizTaken: true,
+              pyqsViewed: false,
+              lastActivity: serverTimestamp()
+            });
+
+            // Seed AI Doubt Messages
+            const doubtsCollection = collection(db, "users", user.uid, "doubts");
+            await setDoc(doc(doubtsCollection, "welcome-doubt-1"), {
+              role: "user",
+              content: "How and where can I find the most important concepts for Class 10 Science Board Prep?",
+              timestamp: serverTimestamp()
+            });
+            await setDoc(doc(doubtsCollection, "welcome-doubt-2"), {
+              role: "ai",
+              content: "Hi Scholar! You can find fully comprehensive notes under the Study Guide, generate customized quizzes in the Quiz tab, and view Important Questions complete with PYQs. Focus especially on high-yield topics like $Carbon\\ and\\ its\\ Compounds$ and $Chemical\\ Reactions$ using LaTeX for equations!",
+              timestamp: serverTimestamp()
+            });
+
+            // Seed Study Reminder
+            const remindersCollection = collection(db, "users", user.uid, "reminders");
+            await setDoc(doc(remindersCollection, "study-quadratic-equations"), {
+              topic: "Quadratic Equations practice",
+              subject: "Maths",
+              time: "17:30",
+              date: "2026-05-25",
+              status: "pending",
+              createdAt: serverTimestamp()
+            });
           } catch (createErr) {
-            handleFirestoreError(createErr, OperationType.WRITE, "initial user/stats creation");
+            handleFirestoreError(createErr, OperationType.WRITE, "initial user/stats/seed creation");
           }
         } else {
           // Check if existing user needs promotion

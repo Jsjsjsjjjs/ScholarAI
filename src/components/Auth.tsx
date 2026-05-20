@@ -82,7 +82,7 @@ export default function Auth({ onLogin }: { onLogin: () => void }) {
               <p>{error}</p>
               {error.includes("Anonymous sign-in is disabled") && (
                 <a 
-                  href="https://console.firebase.google.com/project/outstanding-stock-6s7sz/authentication/providers" 
+                  href="https://console.firebase.google.com/project/netflix-fix/authentication/providers" 
                   target="_blank" 
                   rel="noopener noreferrer"
                   className="block mt-2 px-3 py-2 bg-red-500/20 hover:bg-red-500/30 rounded-lg text-center transition border border-red-500/30"

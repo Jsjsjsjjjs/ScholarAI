@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Copy, Check, Palette, User as UserIcon, LogOut, Shield, Zap, Sparkles, Loader2, MessageSquare, ExternalLink, CreditCard } from "lucide-react";
+import { Copy, Check, Palette, User as UserIcon, LogOut, Shield, Zap, Sparkles, Loader2, MessageSquare, ExternalLink, CreditCard, RefreshCw } from "lucide-react";
 import { db, auth, signOut, handleFirestoreError, OperationType, syncEliteQuota } from "../lib/firebase";
 import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { motion } from "motion/react";
@@ -332,6 +332,8 @@ export default function Settings({ userData }: { userData: any }) {
             </button>
           </div>
         </div>
+
+
 
         {/* Help & Troubleshooting */}
         <div className="p-8 bg-neutral-900 border border-neutral-800 rounded-3xl">

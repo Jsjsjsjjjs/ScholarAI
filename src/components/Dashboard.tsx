@@ -33,8 +33,23 @@ export default function Dashboard({ userData, user }: { userData: any, user: any
   useEffect(() => {
     const q = query(collection(db, "stats"), orderBy("quizCorrect", "desc"), limit(5));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setLeaderboard(data);
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
+      const defaultToppers = [
+        { id: "topper-shreya", nickname: "Topper-Shreya", quizCorrect: 52 },
+        { id: "scholar-aditya", nickname: "Scholar-Aditya", quizCorrect: 48 },
+        { id: "pranav-sst", nickname: "Pranav-SST", quizCorrect: 41 },
+        { id: "math-master-rohit", nickname: "Math-Master-Rohit", quizCorrect: 37 },
+        { id: "english-elite-anjali", nickname: "English-Elite-Anjali", quizCorrect: 33 }
+      ];
+
+      const combined = [...data];
+      for (const topper of defaultToppers) {
+        if (!combined.some(c => c.nickname?.toLowerCase() === topper.nickname.toLowerCase())) {
+          combined.push(topper);
+        }
+      }
+      combined.sort((a, b) => (b.quizCorrect || 0) - (a.quizCorrect || 0));
+      setLeaderboard(combined.slice(0, 5));
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, "stats collection leaderboard query");
     });
