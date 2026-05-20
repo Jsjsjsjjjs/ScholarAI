@@ -19,12 +19,26 @@ export default function DoubtSolver() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  const [activeUid, setActiveUid] = useState<string | null>(() => {
+    return localStorage.getItem("scholar_session_id") || auth.currentUser?.uid || null;
+  });
+
   useEffect(() => {
-    const user = auth.currentUser;
-    if (!user) return;
+    const unsubAuth = auth.onAuthStateChanged((user) => {
+      const scholarSessionId = localStorage.getItem("scholar_session_id");
+      setActiveUid(scholarSessionId || user?.uid || null);
+    });
+    return () => unsubAuth();
+  }, []);
+
+  useEffect(() => {
+    if (!activeUid) {
+      setHistory([]);
+      return;
+    }
 
     const q = query(
-      collection(db, "users", user.uid, "doubts"),
+      collection(db, "users", activeUid, "doubts"),
       orderBy("timestamp", "asc"),
       limit(100)
     );
@@ -33,11 +47,11 @@ export default function DoubtSolver() {
       const msgs = snapshot.docs.map(doc => doc.data() as { role: 'user' | 'ai', content: string });
       setHistory(msgs);
     }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, `users/${user.uid}/doubts`);
+      handleFirestoreError(error, OperationType.LIST, `users/${activeUid}/doubts`);
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [activeUid]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -47,8 +61,7 @@ export default function DoubtSolver() {
 
   const solveDoubt = async () => {
     if (!inputText && !image) return;
-    const user = auth.currentUser;
-    if (!user) return;
+    if (!activeUid) return;
 
     const currentQuery = inputText;
     const userMsg = currentQuery || "Attached an image for solving";
@@ -57,7 +70,7 @@ export default function DoubtSolver() {
     setLoading(true);
     
     try {
-      const doubtsRef = collection(db, "users", user.uid, "doubts");
+      const doubtsRef = collection(db, "users", activeUid, "doubts");
       
       // Save user question
       try {
@@ -67,7 +80,7 @@ export default function DoubtSolver() {
           timestamp: serverTimestamp()
         });
       } catch (fErr) {
-        handleFirestoreError(fErr, OperationType.WRITE, `users/${user.uid}/doubts`);
+        handleFirestoreError(fErr, OperationType.WRITE, `users/${activeUid}/doubts`);
       }
 
       const answer = await clientSolveDoubt(
@@ -86,7 +99,7 @@ export default function DoubtSolver() {
           timestamp: serverTimestamp()
         });
       } catch (fErr) {
-        handleFirestoreError(fErr, OperationType.WRITE, `users/${user.uid}/doubts`);
+        handleFirestoreError(fErr, OperationType.WRITE, `users/${activeUid}/doubts`);
       }
 
       setImage(null);

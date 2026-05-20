@@ -56,10 +56,11 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 }
 
 export async function trackAIUsage(tokenCount: number = 100, isError: boolean = false) {
-  const user = auth.currentUser;
-  if (!user) return;
+  const scholarSessionId = localStorage.getItem("scholar_session_id");
+  const activeUid = scholarSessionId || auth.currentUser?.uid;
+  if (!activeUid) return;
 
-  const userRef = doc(db, "users", user.uid);
+  const userRef = doc(db, "users", activeUid);
   try {
     await setDoc(userRef, {
       aiRequests: increment(1),
@@ -68,7 +69,7 @@ export async function trackAIUsage(tokenCount: number = 100, isError: boolean = 
       quotaExhausted: isError
     }, { merge: true });
   } catch (err) {
-    handleFirestoreError(err, OperationType.UPDATE, `users/${user.uid}`);
+    handleFirestoreError(err, OperationType.UPDATE, `users/${activeUid}`);
   }
 }
 
@@ -77,10 +78,11 @@ export async function trackAIUsage(tokenCount: number = 100, isError: boolean = 
  * In a real app, this would query server-side logs.
  */
 export async function syncEliteQuota() {
-  const user = auth.currentUser;
-  if (!user) return;
+  const scholarSessionId = localStorage.getItem("scholar_session_id");
+  const activeUid = scholarSessionId || auth.currentUser?.uid;
+  if (!activeUid) return;
   
-  const userRef = doc(db, "users", user.uid);
+  const userRef = doc(db, "users", activeUid);
   try {
     const snap = await getDoc(userRef);
 
@@ -93,16 +95,17 @@ export async function syncEliteQuota() {
     
     await setDoc(userRef, updates, { merge: true });
   } catch (err) {
-    handleFirestoreError(err, OperationType.UPDATE, `users/${user.uid}`);
+    handleFirestoreError(err, OperationType.UPDATE, `users/${activeUid}`);
   }
 }
 
 export async function updateProgress(subject: string, topic: string, type: 'notesRead' | 'quizTaken' | 'pyqsViewed') {
-  const user = auth.currentUser;
-  if (!user) return;
+  const scholarSessionId = localStorage.getItem("scholar_session_id");
+  const activeUid = scholarSessionId || auth.currentUser?.uid;
+  if (!activeUid) return;
 
   const topicId = topic.toLowerCase().replace(/[^a-z0-9]/g, "-");
-  const progressRef = doc(db, "users", user.uid, "progress", topicId);
+  const progressRef = doc(db, "users", activeUid, "progress", topicId);
   
   try {
     const snap = await getDoc(progressRef);

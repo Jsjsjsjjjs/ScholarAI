@@ -116,9 +116,10 @@ export default function QuizSection() {
   };
 
   const updateStats = async () => {
-    const user = auth.currentUser;
-    if (!user) return;
-    const statsRef = doc(db, "stats", user.uid);
+    const scholarSessionId = localStorage.getItem("scholar_session_id");
+    const activeUid = scholarSessionId || auth.currentUser?.uid;
+    if (!activeUid) return;
+    const statsRef = doc(db, "stats", activeUid);
     try {
       const snap = await getDoc(statsRef);
       const data = snap.exists() ? snap.data() : { quizCorrect: 0, totalAttempted: 0 };
@@ -136,14 +137,14 @@ export default function QuizSection() {
       };
 
       if (!snap.exists()) {
-        updates.userId = user.uid;
-        updates.nickname = user.displayName || `Scholar-${Math.floor(1000 + Math.random() * 9000)}`;
+        updates.userId = activeUid;
+        updates.nickname = auth.currentUser?.displayName || `Scholar-${Math.floor(1000 + Math.random() * 9000)}`;
         updates.timeSpent = 0;
       }
 
       await setDoc(statsRef, updates, { merge: true });
     } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `stats/${user.uid}`);
+      handleFirestoreError(error, OperationType.UPDATE, `stats/${activeUid}`);
     }
   };
 

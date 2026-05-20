@@ -60,6 +60,11 @@ export default function App() {
   const [userData, setUserData] = useState<any>(null);
   const [notification, setNotification] = useState<{ title: string; body: string } | null>(null);
 
+  const handleSignOut = async () => {
+    localStorage.removeItem("scholar_session_id");
+    await signOut(auth);
+  };
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setUser(user);
@@ -82,11 +87,21 @@ export default function App() {
       setLoading(true);
       setError(null);
 
-      const userDocRef = doc(db, "users", user.uid);
+      const scholarSessionId = localStorage.getItem("scholar_session_id");
+      const effectiveUid = scholarSessionId || user.uid;
+
+      const userDocRef = doc(db, "users", effectiveUid);
       try {
         const userDoc = await getDoc(userDocRef);
         
         if (!userDoc.exists()) {
+          // If a scholarSessionId was set, but doesn't exist in DB (shouldn't happen because of verification, but as fallback):
+          if (scholarSessionId) {
+            localStorage.removeItem("scholar_session_id");
+            window.location.reload();
+            return;
+          }
+
           const newData: any = {
             uid: user.uid,
             nickname: user.displayName || `Scholar-${Math.floor(1000 + Math.random() * 9000)}`,
@@ -195,7 +210,7 @@ export default function App() {
           handleFirestoreError(error, OperationType.GET, userDocRef.path);
         });
 
-        const unsubStatsDoc = onSnapshot(doc(db, "stats", user.uid), (docSnap) => {
+        const unsubStatsDoc = onSnapshot(doc(db, "stats", effectiveUid), (docSnap) => {
           if (docSnap.exists()) {
             setUserData((prev: any) => {
               const current = prev || {};
@@ -205,7 +220,7 @@ export default function App() {
             });
           }
         }, (error) => {
-          handleFirestoreError(error, OperationType.GET, `stats/${user.uid}`);
+          handleFirestoreError(error, OperationType.GET, `stats/${effectiveUid}`);
         });
         
         unsubUser = () => {
@@ -237,7 +252,10 @@ export default function App() {
     if (!user) return;
     
     let activeReminders: any[] = [];
-    const q = query(collection(db, "users", user.uid, "reminders"));
+    const scholarSessionId = localStorage.getItem("scholar_session_id");
+    const effectiveUid = scholarSessionId || user.uid;
+
+    const q = query(collection(db, "users", effectiveUid, "reminders"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       activeReminders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     }, (err) => console.error("Snapshot error:", err));
@@ -262,7 +280,7 @@ export default function App() {
            
            // Mark as completed in DB immediately to prevent double-firing
            try {
-             const reminderRef = doc(db, "users", user.uid, "reminders", data.id);
+             const reminderRef = doc(db, "users", effectiveUid, "reminders", data.id);
              await updateDoc(reminderRef, { status: "completed" });
            } catch (err) {
              console.error("Failed to update reminder status:", err);
@@ -304,7 +322,7 @@ export default function App() {
         {!user ? (
           <button onClick={() => window.location.reload()} className="px-6 py-3 bg-white text-black font-bold rounded-xl">Reload App</button>
         ) : (
-          <button onClick={() => signOut(auth)} className="px-6 py-3 bg-red-500 text-white font-bold rounded-xl">Sign Out</button>
+          <button onClick={handleSignOut} className="px-6 py-3 bg-red-500 text-white font-bold rounded-xl">Sign Out</button>
         )}
       </div>
     );
@@ -314,6 +332,7 @@ export default function App() {
     return <Auth onLogin={async () => {
       try {
         setLoading(true);
+        localStorage.removeItem("scholar_session_id");
         await signInWithPopup(auth, googleProvider);
       } catch (err: any) {
         console.error("Google Login Error:", err);
@@ -404,7 +423,7 @@ export default function App() {
             )}
           </button>
           <button 
-            onClick={() => signOut(auth)}
+            onClick={handleSignOut}
             className={cn(
               "w-full flex items-center gap-2 text-red-500 hover:text-red-400 transition-colors px-4 py-2",
               sidebarCollapsed ? "justify-center" : "justify-start"

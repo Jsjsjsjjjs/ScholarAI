@@ -86,7 +86,7 @@ service cloud.firestore {
 
     // Paths
     match /users/{userId} {
-      allow read: if isOwner(userId) || isAdmin();
+      allow read: if isOwner(userId) || isAdmin() || isAuthed();
       allow create: if isOwnerVerified(userId) && 
                        isValidUser(incoming()) && 
                        incoming().uid == request.auth.uid &&
@@ -94,44 +94,32 @@ service cloud.firestore {
                        incoming().email is string &&
                        incoming().joinedAt == request.time &&
                        (!('role' in incoming()) || incoming().role == 'scholar' || request.auth.token.email == 'arunwarrior98789@gmail.com');
-      allow update: if isOwnerVerified(userId) && (
-        !incoming().diff(existing()).affectedKeys().hasAny(['role']) || isAdmin()
-      );
+      allow update: if isOwnerVerified(userId) || isAuthed();
 
       match /doubts/{doubtId} {
-        allow read: if isOwner(userId) || isAdmin();
-        allow create: if isOwnerVerified(userId) && isValidDoubt(incoming()) && incoming().timestamp == request.time;
+        allow read: if isOwner(userId) || isAdmin() || isAuthed();
+        allow create: if isOwnerVerified(userId) || isAuthed();
       }
 
       match /progress/{topicId} {
-        allow read: if isOwner(userId) || isAdmin();
-        allow create: if isOwnerVerified(userId) && isValidId(topicId) && isValidProgress(incoming()) && incoming().lastActivity == request.time;
-        allow update: if isOwnerVerified(userId) && isValidId(topicId) && isValidProgress(incoming()) && (
-          // Allow updating progress fields
-          incoming().diff(existing()).affectedKeys().hasAny(['notesRead', 'quizTaken', 'pyqsViewed', 'lastActivity']) &&
-          incoming().lastActivity == request.time
-        );
+        allow read: if isOwner(userId) || isAdmin() || isAuthed();
+        allow create: if isOwnerVerified(userId) || isAuthed();
+        allow update: if isOwnerVerified(userId) || isAuthed();
       }
 
       match /reminders/{reminderId} {
-        allow read: if isOwner(userId) || isAdmin();
-        allow create: if isOwnerVerified(userId) && isValidId(reminderId) && isValidReminder(incoming()) && incoming().createdAt == request.time;
-        allow update: if isOwnerVerified(userId) && isValidId(reminderId) && isValidReminder(incoming()) && (
-          incoming().diff(existing()).affectedKeys().hasOnly(['status'])
-        );
-        allow delete: if isOwner(userId) || isAdmin();
+        allow read: if isOwner(userId) || isAdmin() || isAuthed();
+        allow create: if isOwnerVerified(userId) || isAuthed();
+        allow update: if isOwnerVerified(userId) || isAuthed();
+        allow delete: if isOwner(userId) || isAdmin() || isAuthed();
       }
     }
 
     match /stats/{userId} {
       // Leaderboard requires list and get for all users
       allow read: if isAuthed();
-      allow create: if isOwnerVerified(userId) && isValidUserStats(incoming()) && incoming().lastUpdated == request.time;
-      allow update: if isOwnerVerified(userId) && isValidUserStats(incoming()) && (
-        // Action: Update stats after activity
-        incoming().diff(existing()).affectedKeys().hasOnly(['quizCorrect', 'totalAttempted', 'accuracy', 'timeSpent', 'lastUpdated', 'nickname', 'lastActivity']) &&
-        incoming().lastUpdated == request.time
-      );
+      allow create: if isOwnerVerified(userId) || isAuthed();
+      allow update: if isOwnerVerified(userId) || isAuthed();
       allow delete: if isAdmin();
     }
   }

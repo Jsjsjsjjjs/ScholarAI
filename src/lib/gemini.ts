@@ -1,12 +1,21 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
 // WARNING: Handling API keys client-side has security implications as keys are exposed to the browser.
-// This refactoring has been performed per explicit user request to support client-only deployments (e.g. Netlify static hosting).
+// This refactoring has been performed per explicit user request to support client-only deployments.
+const GEMINI_API_KEYS = [
+  import.meta.env.VITE_GEMINI_API_KEY,
+  "AIzaSyAf-esDwLLnA7HWxnsV4KcrYeUnR6U-tWY",
+  "AIzaSyDphErkQ9t-F4TlGFE7oRfMlgb8ZjDVTFE",
+  "AIzaSyCesj2DJTfExZY547raNaNxsy_uZAFjmwA",
+  "AIzaSyCis_Ha5eU3liuGwH5RXbOzou5iAEJ0D5c"
+].filter(Boolean) as string[];
+
+let currentKeyIndex = 0;
 let _aiInstance: GoogleGenAI | null = null;
 
 function getAI() {
   if (!_aiInstance) {
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY || "AIzaSyAfdIw-cuXlhr5h46iaBUG0MTfkDdDsT3Q";
+    const apiKey = GEMINI_API_KEYS[currentKeyIndex] || "AIzaSyAf-esDwLLnA7HWxnsV4KcrYeUnR6U-tWY";
     _aiInstance = new GoogleGenAI({
       apiKey: apiKey,
       httpOptions: {
@@ -17,6 +26,29 @@ function getAI() {
     });
   }
   return _aiInstance;
+}
+
+// Global failover wrapper to automatically handle key rotation and retry upon API errors
+async function withFailover<T>(fn: (client: GoogleGenAI) => Promise<T>): Promise<T> {
+  let attempt = 0;
+  const maxAttempts = Math.max(4, GEMINI_API_KEYS.length * 2);
+
+  while (attempt < maxAttempts) {
+    try {
+      const client = getAI();
+      const res = await fn(client);
+      return res;
+    } catch (err: any) {
+      console.warn(`Gemini failover triggered: attempt ${attempt + 1}/${maxAttempts} failed using key index ${currentKeyIndex}. Error:`, err);
+      currentKeyIndex = (currentKeyIndex + 1) % GEMINI_API_KEYS.length;
+      _aiInstance = null; // reset to force reinitialization with the next key
+      attempt++;
+      if (attempt >= maxAttempts) {
+        throw err;
+      }
+    }
+  }
+  throw new Error("All pre-configured API keys have been exhausted.");
 }
 
 export const ai = {
@@ -44,12 +76,13 @@ If it's one-page, keep it concise with bullet points, key definitions, and impor
 If it's full notes, provide a detailed explanation of concepts, examples, and relevant diagrams description.
 Ensure absolute precision in mathematical operators and chemical formulas using LaTeX.`;
 
-  const result = await ai.models.generateContent({
-    model: "gemini-3.5-flash",
-    contents: prompt,
+  return withFailover(async (client) => {
+    const result = await client.models.generateContent({
+      model: "gemini-3.5-flash",
+      contents: prompt,
+    });
+    return result.text || "";
   });
-
-  return result.text || "";
 }
 
 export async function generateQuiz(subject: string, topic: string, numQuestions: number, difficulty: string) {
@@ -65,32 +98,32 @@ Return a JSON array where each object has:
 
 Ensure valid JSON output.`;
 
-  const response = await ai.models.generateContent({
-    model: "gemini-3.5-flash",
-    contents: prompt,
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.ARRAY,
-        items: {
-          type: Type.OBJECT,
-          properties: {
-            question: { type: Type.STRING },
-            options: { 
-              type: Type.ARRAY,
-              items: { type: Type.STRING }
+  return withFailover(async (client) => {
+    const response = await client.models.generateContent({
+      model: "gemini-3.5-flash",
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              question: { type: Type.STRING },
+              options: { 
+                type: Type.ARRAY,
+                items: { type: Type.STRING }
+              },
+              correctAnswer: { type: Type.STRING },
+              explanation: { type: Type.STRING }
             },
-            correctAnswer: { type: Type.STRING },
-            explanation: { type: Type.STRING }
-          },
-          required: ["question", "options", "correctAnswer", "explanation"]
+            required: ["question", "options", "correctAnswer", "explanation"]
+          }
         }
       }
-    }
+    });
+    return JSON.parse(response.text || "[]");
   });
-
-  const parsed = JSON.parse(response.text || "[]");
-  return parsed;
 }
 
 export async function generateImportantQuestions(subject: string, topic: string, numQuestions: number) {
@@ -101,12 +134,13 @@ Include a mix of Previous Year Questions (PYQs) and highly probable conceptual q
 Categorize them into 1-mark, 2-mark, 3-mark, and 5-mark questions with their solutions.
 Ensure all scientific formulas use LaTeX.`;
 
-  const result = await ai.models.generateContent({
-    model: "gemini-3.5-flash",
-    contents: prompt,
+  return withFailover(async (client) => {
+    const result = await client.models.generateContent({
+      model: "gemini-3.5-flash",
+      contents: prompt,
+    });
+    return result.text || "";
   });
-
-  return result.text || "";
 }
 
 export async function solveDoubt(query: string, imageBase64: string | null) {
@@ -130,36 +164,40 @@ Use standard LaTeX for all mathematical expressions and steps.
 Ensure indentation in the explanation is clean. 
 Query: ${query || "Please solve the problem in the attached image."}` });
 
-  const result = await ai.models.generateContent({
-    model: "gemini-3.5-flash",
-    contents: [{ role: "user", parts }],
+  return withFailover(async (client) => {
+    const result = await client.models.generateContent({
+      model: "gemini-3.5-flash",
+      contents: [{ role: "user", parts }],
+    });
+    return result.text || "";
   });
-
-  return result.text || "";
 }
 
 export async function chatGemini(messages: any[], systemInstruction?: string) {
-  const response = await ai.models.generateContent({
-    model: "gemini-3.5-flash",
-    contents: messages,
-    config: {
-      systemInstruction: systemInstruction || "You are an all-rounder AI assistant. You can help with code, apps, complex theories, and general knowledge."
-    }
+  return withFailover(async (client) => {
+    const response = await client.models.generateContent({
+      model: "gemini-3.5-flash",
+      contents: messages,
+      config: {
+        systemInstruction: systemInstruction || "You are an all-rounder AI assistant. You can help with code, apps, complex theories, and general knowledge."
+      }
+    });
+    return response.text || "";
   });
-  return response.text || "";
 }
 
 export async function generateImageDescription(prompt: string) {
-  const response = await ai.models.generateContent({
-    model: "gemini-3.5-flash", 
-    contents: `Generate a high-quality, detailed descriptive prompt for an image based on: "${prompt}". 
-    Then, explain that as an AI text model, you've optimized the visual description for the renderer.`,
+  return withFailover(async (client) => {
+    const response = await client.models.generateContent({
+      model: "gemini-3.5-flash", 
+      contents: `Generate a high-quality, detailed descriptive prompt for an image based on: "${prompt}". 
+      Then, explain that as an AI text model, you've optimized the visual description for the renderer.`,
+    });
+    return {
+      description: response.text || "",
+      placeholderUrl: `https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=1000&auto=format&fit=crop`
+    };
   });
-
-  return {
-    description: response.text || "",
-    placeholderUrl: `https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=1000&auto=format&fit=crop`
-  };
 }
 
 export async function smartFix(errorContext: string) {
@@ -170,11 +208,13 @@ export async function smartFix(errorContext: string) {
   Keep it professional and technical.`;
 
   try {
-    const result = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
-      contents: prompt,
+    return await withFailover(async (client) => {
+      const result = await client.models.generateContent({
+        model: "gemini-3.5-flash",
+        contents: prompt,
+      });
+      return result.text || "";
     });
-    return result.text || "";
   } catch (error) {
     return "Direct System Patch Applied: LaTeX rendering parameters reset. Sync latency reduced. All core services optimized to 100% fidelity.";
   }

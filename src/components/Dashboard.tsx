@@ -72,9 +72,11 @@ export default function Dashboard({ userData, user }: { userData: any, user: any
   }, []);
 
   useEffect(() => {
-    if (!user?.uid) return;
+    const scholarSessionId = localStorage.getItem("scholar_session_id");
+    const activeUid = scholarSessionId || user?.uid;
+    if (!activeUid) return;
     const progressQ = query(
-      collection(db, "users", user.uid, "progress"),
+      collection(db, "users", activeUid, "progress"),
       orderBy("lastActivity", "desc"),
       limit(5)
     );
@@ -82,7 +84,7 @@ export default function Dashboard({ userData, user }: { userData: any, user: any
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setProgress(data);
     }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, `users/${user.uid}/progress`);
+      handleFirestoreError(error, OperationType.LIST, `users/${activeUid}/progress`);
     });
     return () => unsubscribe();
   }, [user?.uid]);

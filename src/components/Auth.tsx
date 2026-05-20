@@ -18,28 +18,19 @@ export default function Auth({ onLogin }: { onLogin: () => void }) {
     setLoading(true);
     setError(null);
     try {
-      const userCredential = await signInAnonymously(auth);
-      const user = userCredential.user;
-      const userDocRef = doc(db, "users", user.uid);
+      // 1. Dynamic Database Verification: Query the users collection first to verify if that specific ID exists
+      const userDocRef = doc(db, "users", scholarId);
+      const userDocSnap = await getDoc(userDocRef);
       
-      const newData = {
-        uid: user.uid,
-        nickname: `Scholar-${scholarId}`,
-        scholarId: scholarId,
-        email: "none@scholarai.app", // Fixed: email cannot be null due to rules
-        joinedAt: serverTimestamp(),
-        colorMode: "dark"
-      };
-      await setDoc(userDocRef, newData);
+      if (!userDocSnap.exists()) {
+        setError("Invalid Scholar ID. Please check your credentials.");
+        setLoading(false);
+        return;
+      }
       
-      await setDoc(doc(db, "stats", user.uid), {
-        userId: user.uid,
-        nickname: newData.nickname,
-        quizCorrect: 0,
-        accuracy: 0,
-        timeSpent: 0,
-        lastUpdated: serverTimestamp()
-      });
+      // 2. Accurate Profile Hydration: Set the active session ID, then sign in anonymously (to authorize Firebase rules)
+      localStorage.setItem("scholar_session_id", scholarId);
+      await signInAnonymously(auth);
     } catch (err: any) {
       console.error(err);
       if (err.code === "auth/admin-restricted-operation") {
