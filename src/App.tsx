@@ -170,9 +170,10 @@ export default function App() {
           const data = userDoc.data();
           if (user.email === "arunwarrior98789@gmail.com" && data?.role !== "owner") {
             try {
-              await updateDoc(userDocRef, { role: "owner" });
+              await setDoc(userDocRef, { role: "owner" }, { merge: true });
             } catch (updateErr) {
               console.error("Failed to promote owner:", updateErr);
+              handleFirestoreError(updateErr, OperationType.UPDATE, userDocRef.path);
             }
           }
         }

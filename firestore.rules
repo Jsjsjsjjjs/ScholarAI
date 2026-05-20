@@ -13,18 +13,13 @@ service cloud.firestore {
     }
     function isOwner(userId) { return isAuthed() && request.auth.uid == userId; }
     function isAdmin() { 
-      return isAuthed() && (
-        request.auth.token.email == 'arunwarrior98789@gmail.com' ||
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'owner')
-      );
+      return isAuthed() && request.auth.token.email == 'arunwarrior98789@gmail.com';
+    }
+    function isOwnerOrAdmin(userId) {
+      return isOwner(userId) || isAdmin();
     }
     function isOwnerVerified(userId) { 
-      return (isOwner(userId) || isAdmin()) && (
-        request.auth.token.email_verified == true || 
-        request.auth.token.firebase.sign_in_provider == 'anonymous' ||
-        request.auth.token.email == 'arunwarrior98789@gmail.com'
-      ); 
+      return isOwnerOrAdmin(userId); 
     }
     function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
     function incoming() { return request.resource.data; }
@@ -32,42 +27,28 @@ service cloud.firestore {
 
     // User Entity Validation
     function isValidUser(data) {
-      let requiredFields = ['uid', 'nickname', 'email', 'joinedAt', 'colorMode'];
-      let optionalFields = [
-        'role',
-        'discordName', 'discordUsername', 'discordAvatar', 
-        'aiRequests', 'totalTokens', 'lastAIActivity', 
-        'quotaExhausted', 'lastQuotaScan', 'lastSync'
-      ];
-      return data.keys().hasAll(requiredFields) &&
-             data.keys().size() <= (requiredFields.size() + optionalFields.size()) &&
-             data.uid == request.auth.uid &&
-             data.nickname is string && data.nickname.size() >= 1 && data.nickname.size() <= 64 &&
-             data.email is string &&
-             data.joinedAt is timestamp &&
-             data.colorMode in ['light', 'dark'] &&
+      return (!('uid' in data) || data.uid == request.auth.uid) &&
+             (!('nickname' in data) || (data.nickname is string && data.nickname.size() >= 1 && data.nickname.size() <= 128)) &&
+             (!('email' in data) || data.email is string) &&
              (!('role' in data) || data.role in ['owner', 'admin', 'scholar']) &&
+             (!('joinedAt' in data) || data.joinedAt is timestamp || data.joinedAt is string) &&
+             (!('colorMode' in data) || data.colorMode in ['light', 'dark']) &&
              (!('aiRequests' in data) || data.aiRequests is int) &&
              (!('totalTokens' in data) || data.totalTokens is int) &&
-             (!('lastAIActivity' in data) || data.lastAIActivity is timestamp) &&
+             (!('lastAIActivity' in data) || data.lastAIActivity is timestamp || data.lastAIActivity is string) &&
              (!('quotaExhausted' in data) || data.quotaExhausted is bool) &&
-             (!('lastQuotaScan' in data) || data.lastQuotaScan is timestamp) &&
-             (!('lastSync' in data) || data.lastSync is timestamp);
+             (!('lastQuotaScan' in data) || data.lastQuotaScan is timestamp || data.lastQuotaScan is string) &&
+             (!('lastSync' in data) || data.lastSync is timestamp || data.lastSync is string);
     }
 
     // UserStats Entity Validation
     function isValidUserStats(data) {
-      let requiredFields = ['userId', 'nickname', 'quizCorrect', 'totalAttempted', 'accuracy', 'timeSpent', 'lastUpdated'];
-      let optionalFields = ['lastActivity'];
-      return data.keys().hasAll(requiredFields) &&
-             data.keys().size() <= (requiredFields.size() + optionalFields.size()) &&
-             (data.userId == request.auth.uid || isAdmin()) &&
-             data.nickname is string &&
-             data.quizCorrect is int &&
-             data.totalAttempted is int &&
-             data.accuracy is number &&
-             data.timeSpent is int &&
-             data.lastUpdated is timestamp;
+      return (data.userId == request.auth.uid || isAdmin()) &&
+             (!('nickname' in data) || data.nickname is string) &&
+             (!('quizCorrect' in data) || data.quizCorrect is int) &&
+             (!('totalAttempted' in data) || data.totalAttempted is int) &&
+             (!('accuracy' in data) || data.accuracy is number) &&
+             (!('timeSpent' in data) || data.timeSpent is int);
     }
 
     // DoubtMessage Entity Validation
@@ -106,14 +87,15 @@ service cloud.firestore {
     // Paths
     match /users/{userId} {
       allow read: if isOwner(userId) || isAdmin();
-      allow create: if isOwnerVerified(userId) && isValidUser(incoming()) && incoming().joinedAt == request.time;
-      allow update: if isOwnerVerified(userId) && isValidUser(incoming()) && (
-        // Action: Change profile or AI metadata
-        incoming().diff(existing()).affectedKeys().hasAny([
-          'nickname', 'colorMode', 'discordName', 'discordUsername', 'discordAvatar',
-          'aiRequests', 'totalTokens', 'lastAIActivity', 'quotaExhausted', 'lastQuotaScan', 'lastSync',
-          'role'
-        ])
+      allow create: if isOwnerVerified(userId) && 
+                       isValidUser(incoming()) && 
+                       incoming().uid == request.auth.uid &&
+                       incoming().nickname is string &&
+                       incoming().email is string &&
+                       incoming().joinedAt == request.time &&
+                       (!('role' in incoming()) || incoming().role == 'scholar' || request.auth.token.email == 'arunwarrior98789@gmail.com');
+      allow update: if isOwnerVerified(userId) && (
+        !incoming().diff(existing()).affectedKeys().hasAny(['role']) || isAdmin()
       );
 
       match /doubts/{doubtId} {
@@ -150,6 +132,7 @@ service cloud.firestore {
         incoming().diff(existing()).affectedKeys().hasOnly(['quizCorrect', 'totalAttempted', 'accuracy', 'timeSpent', 'lastUpdated', 'nickname', 'lastActivity']) &&
         incoming().lastUpdated == request.time
       );
+      allow delete: if isAdmin();
     }
   }
 }

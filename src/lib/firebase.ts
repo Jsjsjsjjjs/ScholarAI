@@ -61,12 +61,12 @@ export async function trackAIUsage(tokenCount: number = 100, isError: boolean = 
 
   const userRef = doc(db, "users", user.uid);
   try {
-    await updateDoc(userRef, {
+    await setDoc(userRef, {
       aiRequests: increment(1),
       totalTokens: increment(tokenCount),
       lastAIActivity: serverTimestamp(),
       quotaExhausted: isError
-    });
+    }, { merge: true });
   } catch (err) {
     handleFirestoreError(err, OperationType.UPDATE, `users/${user.uid}`);
   }
@@ -91,7 +91,7 @@ export async function syncEliteQuota() {
     if (!('aiRequests' in data)) updates.aiRequests = 0;
     if (!('totalTokens' in data)) updates.totalTokens = 0;
     
-    await updateDoc(userRef, updates);
+    await setDoc(userRef, updates, { merge: true });
   } catch (err) {
     handleFirestoreError(err, OperationType.UPDATE, `users/${user.uid}`);
   }

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Copy, Check, Palette, User as UserIcon, LogOut, Shield, Zap, Sparkles, Loader2, MessageSquare, ExternalLink, CreditCard, RefreshCw } from "lucide-react";
 import { db, auth, signOut, handleFirestoreError, OperationType, syncEliteQuota } from "../lib/firebase";
-import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { motion } from "motion/react";
 import { cn } from "../lib/utils";
 
@@ -107,8 +107,8 @@ export default function Settings({ userData }: { userData: any }) {
         discordUsername,
         discordAvatar
       };
-      await updateDoc(userRef, updates);
-      await updateDoc(statsRef, { nickname });
+      await setDoc(userRef, updates, { merge: true });
+      await setDoc(statsRef, { nickname, userId: userData.uid, lastUpdated: serverTimestamp() }, { merge: true });
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `users/stats/${userData.uid}`);
     } finally {
@@ -120,7 +120,7 @@ export default function Settings({ userData }: { userData: any }) {
     const newMode = userData.colorMode === "dark" ? "light" : "dark";
     const userRef = doc(db, "users", userData.uid);
     try {
-      await updateDoc(userRef, { colorMode: newMode });
+      await setDoc(userRef, { colorMode: newMode }, { merge: true });
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `users/${userData.uid}`);
     }

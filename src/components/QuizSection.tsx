@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { BrainCircuit, Loader2, CheckCircle2, XCircle, Info, Trophy, RotateCcw } from "lucide-react";
 import { db, auth, serverTimestamp, handleFirestoreError, OperationType, updateProgress, trackAIUsage } from "../lib/firebase";
-import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc } from "firebase/firestore";
 import Markdown from "react-markdown";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
@@ -101,13 +101,21 @@ export default function QuizSection() {
       const newAttempted = (data.totalAttempted || 0) + questions.length;
       const newAccuracy = (newCorrect / (newAttempted || 1)) * 100;
 
-      await updateDoc(statsRef, {
+      const updates: any = {
         quizCorrect: newCorrect,
         totalAttempted: newAttempted,
         accuracy: newAccuracy || 0,
         lastUpdated: serverTimestamp(),
         lastActivity: serverTimestamp()
-      });
+      };
+
+      if (!snap.exists()) {
+        updates.userId = user.uid;
+        updates.nickname = user.displayName || `Scholar-${Math.floor(1000 + Math.random() * 9000)}`;
+        updates.timeSpent = 0;
+      }
+
+      await setDoc(statsRef, updates, { merge: true });
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `stats/${user.uid}`);
     }

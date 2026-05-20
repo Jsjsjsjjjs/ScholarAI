@@ -29,27 +29,42 @@ import ScholarStatsCard from "./ScholarStatsCard";
 export default function Dashboard({ userData, user }: { userData: any, user: any }) {
   const [leaderboard, setLeaderboard] = useState<any[]>([]);
   const [progress, setProgress] = useState<any[]>([]);
+  const [confirmClear, setConfirmClear] = useState(false);
+  const [clearStatus, setClearStatus] = useState<string | null>(null);
+  const [isClearing, setIsClearing] = useState(false);
+
+  const isAdminUser = user?.email === "arunwarrior98789@gmail.com" || userData?.role === "owner" || userData?.role === "admin";
+
+  const handleClearLeaderboard = async () => {
+    setIsClearing(true);
+    setClearStatus("Clearing...");
+    try {
+      const { getDocs, deleteDoc, doc } = await import("firebase/firestore");
+      const querySnapshot = await getDocs(collection(db, "stats"));
+      const deletePromises = querySnapshot.docs.map((docSnap) => 
+        deleteDoc(doc(db, "stats", docSnap.id))
+      );
+      await Promise.all(deletePromises);
+      setClearStatus("Cleared!");
+      setConfirmClear(false);
+      setTimeout(() => setClearStatus(null), 3000);
+    } catch (err: any) {
+      console.error("Failed to clear leaderboard", err);
+      setClearStatus("Error: " + (err?.message || "Unknown error"));
+      setTimeout(() => setClearStatus(null), 5000);
+    } finally {
+      setIsClearing(false);
+    }
+  };
 
   useEffect(() => {
-    const q = query(collection(db, "stats"), orderBy("quizCorrect", "desc"), limit(5));
+    const q = query(collection(db, "stats"), orderBy("quizCorrect", "desc"), limit(10));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
-      const defaultToppers = [
-        { id: "topper-shreya", nickname: "Topper-Shreya", quizCorrect: 52 },
-        { id: "scholar-aditya", nickname: "Scholar-Aditya", quizCorrect: 48 },
-        { id: "pranav-sst", nickname: "Pranav-SST", quizCorrect: 41 },
-        { id: "math-master-rohit", nickname: "Math-Master-Rohit", quizCorrect: 37 },
-        { id: "english-elite-anjali", nickname: "English-Elite-Anjali", quizCorrect: 33 }
-      ];
-
-      const combined = [...data];
-      for (const topper of defaultToppers) {
-        if (!combined.some(c => c.nickname?.toLowerCase() === topper.nickname.toLowerCase())) {
-          combined.push(topper);
-        }
-      }
-      combined.sort((a, b) => (b.quizCorrect || 0) - (a.quizCorrect || 0));
-      setLeaderboard(combined.slice(0, 5));
+      
+      // Strict real-user leaderboard sorting based on real features & work logged in Firestore
+      const sorted = [...data].sort((a, b) => (b.quizCorrect || 0) - (a.quizCorrect || 0));
+      setLeaderboard(sorted.slice(0, 5));
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, "stats collection leaderboard query");
     });
@@ -140,7 +155,43 @@ export default function Dashboard({ userData, user }: { userData: any, user: any
               <Trophy size={20} className="text-yellow-500" />
               Global Leaderboard
             </h3>
-            <Award className="text-neutral-500" />
+            <div className="flex items-center gap-3">
+              {isAdminUser && (
+                <div className="flex items-center gap-2">
+                  {clearStatus && (
+                    <span className="text-xs text-orange-500 font-bold bg-orange-500/10 px-2 py-0.5 rounded">
+                      {clearStatus}
+                    </span>
+                  )}
+                  {confirmClear ? (
+                    <div className="flex items-center gap-1 bg-neutral-800/80 p-0.5 rounded-lg border border-neutral-700">
+                      <button
+                        onClick={handleClearLeaderboard}
+                        disabled={isClearing}
+                        className="text-[10px] uppercase font-black bg-red-600 hover:bg-red-700 text-white px-2 py-1 rounded transition-colors cursor-pointer"
+                      >
+                        Yes
+                      </button>
+                      <button
+                        onClick={() => setConfirmClear(false)}
+                        disabled={isClearing}
+                        className="text-[10px] uppercase font-black bg-neutral-900 hover:bg-neutral-800 text-neutral-400 px-2 py-1 rounded transition-colors cursor-pointer"
+                      >
+                        No
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setConfirmClear(true)}
+                      className="text-[10px] uppercase font-black text-red-500 hover:text-red-400 bg-red-500/10 border border-red-500/20 px-2.5 py-1 rounded-lg transition-all cursor-pointer"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              )}
+              <Award className="text-neutral-500" />
+            </div>
           </div>
           <div className="space-y-4">
             {leaderboard.map((entry, i) => (
