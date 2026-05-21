@@ -428,7 +428,7 @@ export default function App() {
     )}>
       {/* Sidebar / Nav */}
       <aside className={cn(
-        "fixed left-0 top-0 h-full border-r transition-all duration-300 z-20 ease-in-out print:hidden",
+        "fixed left-0 top-0 h-full border-r transition-all duration-300 z-20 ease-in-out",
         sidebarCollapsed ? "w-20" : "w-64",
         darkMode ? "bg-neutral-900/50 border-neutral-800" : "bg-white border-neutral-200"
       )}>
@@ -505,10 +505,10 @@ export default function App() {
 
       {/* Main Content */}
       <main className={cn(
-        "min-h-screen w-full overflow-x-hidden relative flex flex-col transition-all duration-300 print:pl-0",
+        "min-h-screen w-full overflow-x-hidden relative flex flex-col transition-all duration-300",
         sidebarCollapsed ? "pl-20" : "pl-64"
       )}>
-        <header className="h-20 px-4 sm:px-8 flex items-center justify-between border-b border-neutral-800/10 backdrop-blur-md sticky top-0 z-10 transition-colors print:hidden">
+        <header className="h-20 px-4 sm:px-8 flex items-center justify-between border-b border-neutral-800/10 backdrop-blur-md sticky top-0 z-10 transition-colors sidebar-header">
           <div className="flex items-center gap-4">
             <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-orange-500 to-amber-400 flex items-center justify-center text-white font-black shadow-lg shadow-orange-500/20 overflow-hidden">
               {userData?.discordAvatar ? (
@@ -546,7 +546,7 @@ export default function App() {
           </div>
         </header>
 
-        <div className="p-4 sm:p-8 max-w-6xl mx-auto w-full print:p-0 print:max-w-none">
+        <div className="p-4 sm:p-8 max-w-6xl mx-auto w-full">
           <AnimatePresence mode="wait">
             <motion.div
               key={activeTab}
@@ -575,7 +575,7 @@ export default function App() {
               initial={{ opacity: 0, x: 100 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 100 }}
-              className="fixed bottom-24 right-8 z-50 p-6 bg-orange-500 text-white rounded-3xl shadow-2xl shadow-orange-500/40 border border-white/20 max-w-sm flex items-start gap-4"
+              className="fixed bottom-24 right-8 z-50 p-6 bg-orange-500 text-white rounded-3xl shadow-2xl shadow-orange-500/40 border border-white/20 max-w-sm flex items-start gap-4 green-popup-class"
             >
               <div className="p-3 bg-white/20 rounded-2xl">
                 <Bell className="animate-ring" />

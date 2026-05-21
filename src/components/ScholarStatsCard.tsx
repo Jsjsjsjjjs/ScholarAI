@@ -9,11 +9,14 @@ const ScholarStatsCard = memo(({ userData }: { userData: any }) => {
   const printStats = async () => {
     setExportState("preparing");
     try {
+      document.body.classList.add('handwritten-container');
       await new Promise((resolve) => setTimeout(resolve, 150));
       window.print();
+      document.body.classList.remove('handwritten-container');
       setExportState("success");
       setTimeout(() => setExportState("idle"), 3000);
     } catch (err) {
+      document.body.classList.remove('handwritten-container');
       console.error("Stats print failed:", err);
       setExportState("error");
       setTimeout(() => setExportState("idle"), 4000);
@@ -22,7 +25,7 @@ const ScholarStatsCard = memo(({ userData }: { userData: any }) => {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center bg-neutral-900/80 p-4 rounded-2xl border border-white/5 print:hidden">
+      <div className="flex justify-between items-center bg-neutral-900/80 p-4 rounded-2xl border border-white/5 print-button-container">
         <div>
            <h3 className="text-lg font-black tracking-tight text-white">Elite Scholar Pass</h3>
            <p className="text-xs text-neutral-500 font-bold uppercase tracking-widest">Share your academic milestones</p>
