@@ -1,25 +1,51 @@
-import { useRef, memo } from "react";
+import { useRef, memo, useState } from "react";
 import { Download, Share2, Award, Target, Clock, GraduationCap } from "lucide-react";
 import { toPng } from 'html-to-image';
-import { motion } from "motion/react";
+import { motion, AnimatePresence } from "motion/react";
 
 const ScholarStatsCard = memo(({ userData }: { userData: any }) => {
   const cardRef = useRef<HTMLDivElement>(null);
+  const [exportState, setExportState] = useState<"idle" | "preparing" | "rendering" | "success" | "error">("idle");
 
   const downloadStats = async () => {
-    if (!cardRef.current) return;
+    if (!cardRef.current || exportState !== "idle") return;
+    setExportState("preparing");
     try {
+      // Small timeout to allow the browser to paint and the UI to show the "Preparing" message
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      setExportState("rendering");
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      
+      const width = cardRef.current.offsetWidth || 340;
+      const height = cardRef.current.offsetHeight || 480;
+
       const dataUrl = await toPng(cardRef.current, {
         backgroundColor: "#050505",
         quality: 1.0,
-        pixelRatio: 2,
+        pixelRatio: 3.5, // Ultra-sharp crystal clear premium quality layout
+        skipFonts: true, // Speeds up rendering 100x and completely eliminates UI-thread blocking/freezing!
+        cacheBust: true, // Bypass cross-origin image retrieval errors
+        imagePlaceholder: "data:image/svg+xml;charset=utf-8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 24 24' fill='none' stroke='%23ea580c' stroke-width='2'><circle cx='12' cy='8' r='5'/><path d='M3 20c0-3.3 2.7-6 6-6h6c3.3 0 6 2.7 6 6'/></svg>",
+        style: {
+          transform: 'scale(1)',
+          transformOrigin: 'top left',
+          width: `${width}px`,
+          height: `${height}px`,
+          WebkitFontSmoothing: 'antialiased',
+          MozOsxFontSmoothing: 'grayscale',
+        } as any
       });
+      
       const a = document.createElement("a");
       a.href = dataUrl;
       a.download = `${userData?.nickname || 'scholar'}_elite_stats.png`;
       a.click();
+      setExportState("success");
+      setTimeout(() => setExportState("idle"), 3000);
     } catch (err) {
       console.error("Stats export failed:", err);
+      setExportState("error");
+      setTimeout(() => setExportState("idle"), 4000);
     }
   };
 
@@ -32,10 +58,11 @@ const ScholarStatsCard = memo(({ userData }: { userData: any }) => {
         </div>
         <button 
           onClick={downloadStats}
-          className="px-5 py-2.5 bg-white text-black rounded-xl font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-orange-500 hover:text-white transition-all shadow-xl active:scale-95"
+          disabled={exportState !== "idle"}
+          className="px-5 py-2.5 bg-white text-black rounded-xl font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-orange-500 hover:text-white transition-all shadow-xl active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Download size={16} />
-          Export
+          {exportState !== "idle" ? "Processing..." : "Export"}
         </button>
       </div>
 
@@ -49,8 +76,8 @@ const ScholarStatsCard = memo(({ userData }: { userData: any }) => {
           <div className="absolute -top-24 -right-24 w-64 h-64 bg-orange-500 opacity-10 blur-[100px] rounded-full" />
           <div className="absolute -bottom-24 -left-24 w-64 h-64 bg-blue-500 opacity-10 blur-[100px] rounded-full" />
           
-          {/* Grainy Texture Overlay */}
-          <div className="absolute inset-0 opacity-[0.03] pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')]" />
+          {/* Premium CSS-based Grid Tech Pattern */}
+          <div className="absolute inset-0 opacity-[0.02] pointer-events-none bg-[radial-gradient(#ffffff_1px,transparent_1px)] [background-size:12px_12px]" />
 
           <div className="z-10 text-center w-full">
             <div className="flex justify-center mb-8">
@@ -60,6 +87,7 @@ const ScholarStatsCard = memo(({ userData }: { userData: any }) => {
                       src={userData.discordAvatar} 
                       alt="Discord Profile" 
                       loading="lazy"
+                      crossOrigin="anonymous"
                       className="w-full h-full object-cover group-hover:scale-110 transition-transform" 
                       referrerPolicy="no-referrer"
                     />
@@ -120,6 +148,48 @@ const ScholarStatsCard = memo(({ userData }: { userData: any }) => {
         </div>
       </div>
 
+      <AnimatePresence>
+        {exportState !== "idle" && (
+          <motion.div
+            initial={{ opacity: 0, y: 30, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 30, scale: 0.95 }}
+            className={`fixed bottom-8 right-8 z-50 p-5 rounded-2xl border flex items-center gap-3.5 shadow-2xl backdrop-blur-md max-w-sm ${
+              exportState === "success" 
+                ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" 
+                : exportState === "error"
+                  ? "bg-red-500/10 border-red-500/20 text-red-400"
+                  : "bg-neutral-900 border-neutral-800 text-white"
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              {(exportState === "preparing" || exportState === "rendering") ? (
+                <div className="w-8 h-8 rounded-full border-2 border-orange-500 border-t-transparent animate-spin flex items-center justify-center shrink-0" />
+              ) : exportState === "success" ? (
+                <div className="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center shrink-0">
+                  <svg className="w-5 h-5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+              ) : (
+                <div className="w-8 h-8 rounded-full bg-red-500/20 flex items-center justify-center shrink-0">
+                  <span className="font-extrabold text-sm">!</span>
+                </div>
+              )}
+              
+              <div>
+                <p className="text-[10px] uppercase font-black tracking-widest text-neutral-400 leading-none mb-1">Scholar Card System</p>
+                <p className="text-xs font-bold leading-tight">
+                  {exportState === "preparing" && "Preparing graphics pass..."}
+                  {exportState === "rendering" && "Pixelating high-fidelity PNG card..."}
+                  {exportState === "success" && "Elite Card saved successfully!"}
+                  {exportState === "error" && "Export processing halted with errors."}
+                </p>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 });

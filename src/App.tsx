@@ -78,6 +78,16 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (darkMode) {
+      document.documentElement.classList.remove("light");
+      document.documentElement.classList.add("dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+      document.documentElement.classList.add("light");
+    }
+  }, [darkMode]);
+
+  useEffect(() => {
     if (!user) return;
 
     let unsubUser: (() => void) | undefined;
@@ -355,12 +365,12 @@ export default function App() {
 
   return (
     <div className={cn(
-      "min-h-screen transition-colors duration-300",
+      "min-h-screen w-full overflow-x-hidden relative transition-colors duration-300",
       darkMode ? "bg-neutral-950 text-neutral-100" : "bg-neutral-50 text-neutral-900"
     )}>
       {/* Sidebar / Nav */}
       <aside className={cn(
-        "fixed left-0 top-0 h-full border-r transition-all duration-300 z-20 ease-in-out",
+        "fixed left-0 top-0 h-full border-r transition-all duration-300 z-20 ease-in-out print:hidden",
         sidebarCollapsed ? "w-20" : "w-64",
         darkMode ? "bg-neutral-900/50 border-neutral-800" : "bg-white border-neutral-200"
       )}>
@@ -437,10 +447,10 @@ export default function App() {
 
       {/* Main Content */}
       <main className={cn(
-        "min-h-screen transition-all duration-300",
+        "min-h-screen w-full overflow-x-hidden relative flex flex-col transition-all duration-300 print:pl-0",
         sidebarCollapsed ? "pl-20" : "pl-64"
       )}>
-        <header className="h-20 px-8 flex items-center justify-between border-b border-neutral-800/10 backdrop-blur-md sticky top-0 z-10 transition-colors">
+        <header className="h-20 px-4 sm:px-8 flex items-center justify-between border-b border-neutral-800/10 backdrop-blur-md sticky top-0 z-10 transition-colors print:hidden">
           <div className="flex items-center gap-4">
             <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-orange-500 to-amber-400 flex items-center justify-center text-white font-black shadow-lg shadow-orange-500/20 overflow-hidden">
               {userData?.discordAvatar ? (
@@ -478,7 +488,7 @@ export default function App() {
           </div>
         </header>
 
-        <div className="p-8 max-w-6xl mx-auto">
+        <div className="p-4 sm:p-8 max-w-6xl mx-auto w-full print:p-0 print:max-w-none">
           <AnimatePresence mode="wait">
             <motion.div
               key={activeTab}

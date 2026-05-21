@@ -42,7 +42,7 @@ export default function ImportantQuestions() {
 
   return (
     <div className="space-y-8">
-      <div className="bg-neutral-900 border border-neutral-800 rounded-3xl p-8 relative overflow-hidden">
+      <div className="bg-neutral-900 border border-neutral-800 rounded-3xl p-8 relative overflow-hidden print:hidden">
         <div className="z-10 relative">
           <div className="inline-flex items-center gap-2 px-3 py-1 bg-orange-500/10 text-orange-500 rounded-full text-xs font-bold uppercase tracking-widest mb-4">
             <Star size={14} />
@@ -106,7 +106,7 @@ export default function ImportantQuestions() {
       </div>
 
       {content && (
-        <div className="bg-white text-black p-12 rounded-3xl shadow-2xl relative">
+        <div className="bg-white text-black p-6 md:p-12 rounded-3xl shadow-2xl relative print:p-0 print:shadow-none print:rounded-none">
           <div className="absolute top-8 right-8 flex gap-2">
              <button onClick={() => window.print()} className="p-2 bg-neutral-100 rounded-lg hover:bg-neutral-200 transition">
                <Printer size={20} />

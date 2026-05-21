@@ -250,11 +250,11 @@ export default function Dashboard({ userData, user }: { userData: any, user: any
         </div>
       </div>
       
-      <div className="p-12 rounded-3xl bg-gradient-to-br from-orange-500 to-red-600 relative overflow-hidden text-white shadow-2xl shadow-orange-500/20">
+      <div className="p-6 md:p-12 rounded-3xl bg-gradient-to-br from-orange-500 to-red-600 relative overflow-hidden text-white shadow-2xl shadow-orange-500/20">
          <div className="z-10 relative">
             <h2 className="text-3xl font-black mb-4">Board Exams Approaching?</h2>
             <p className="max-w-md opacity-90 mb-8 font-medium">Use our Expert Chapter Notes and PYQ generator to stay ahead of the curve. All content is powered by high-precision AI.</p>
-            <div className="flex gap-4">
+            <div className="flex flex-wrap gap-4">
                <div className="px-6 py-3 bg-white/20 backdrop-blur-xl rounded-xl border border-white/30 font-bold">New: Hindi Support</div>
                <div className="px-6 py-3 bg-white/20 backdrop-blur-xl rounded-xl border border-white/30 font-bold">Math Formula Wiki</div>
             </div>
