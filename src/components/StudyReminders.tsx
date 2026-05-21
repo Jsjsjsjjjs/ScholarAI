@@ -40,12 +40,21 @@ export default function StudyReminders() {
   const [time, setTime] = useState("");
   const [date, setDate] = useState("");
   const [loading, setLoading] = useState(false);
+  const [activeUid, setActiveUid] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!auth.currentUser) return;
+    const unsubAuth = auth.onAuthStateChanged((user) => {
+      const scholarSessionId = localStorage.getItem("scholar_session_id");
+      setActiveUid(scholarSessionId || user?.uid || null);
+    });
+    return () => unsubAuth();
+  }, []);
+
+  useEffect(() => {
+    if (!activeUid) return;
 
     const q = query(
-      collection(db, "users", auth.currentUser.uid, "reminders"),
+      collection(db, "users", activeUid, "reminders"),
       orderBy("createdAt", "desc")
     );
 
@@ -60,15 +69,15 @@ export default function StudyReminders() {
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [activeUid]);
 
   const addReminder = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!topic || !subject || !time || !date || !auth.currentUser) return;
+    if (!topic || !subject || !time || !date || !activeUid) return;
 
     setLoading(true);
     try {
-      await addDoc(collection(db, "users", auth.currentUser.uid, "reminders"), {
+      await addDoc(collection(db, "users", activeUid, "reminders"), {
         topic,
         subject,
         time,
@@ -88,9 +97,9 @@ export default function StudyReminders() {
   };
 
   const deleteReminder = async (id: string) => {
-    if (!auth.currentUser) return;
+    if (!activeUid) return;
     try {
-      await deleteDoc(doc(db, "users", auth.currentUser.uid, "reminders", id));
+      await deleteDoc(doc(db, "users", activeUid, "reminders", id));
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, "reminders");
     }

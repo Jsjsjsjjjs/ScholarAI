@@ -90,7 +90,9 @@ export default function App() {
   useEffect(() => {
     if (!user) return;
 
-    let unsubUser: (() => void) | undefined;
+    let isCurrent = true;
+    let unsubUserDoc: (() => void) | undefined;
+    let unsubStatsDoc: (() => void) | undefined;
 
     async function initUser() {
       if (!user) return;
@@ -104,6 +106,8 @@ export default function App() {
       try {
         const userDoc = await getDoc(userDocRef);
         
+        if (!isCurrent) return;
+
         if (!userDoc.exists()) {
           // If a scholarSessionId was set, but doesn't exist in DB (shouldn't happen because of verification, but as fallback):
           if (scholarSessionId) {
@@ -203,13 +207,22 @@ export default function App() {
           }
         }
 
-        const unsubUserDoc = onSnapshot(userDocRef, (docSnap) => {
+        if (!isCurrent) return;
+
+        unsubUserDoc = onSnapshot(userDocRef, (docSnap) => {
+          if (!isCurrent) return;
           if (docSnap.exists()) {
+            const newData = docSnap.data();
             setUserData((prev: any) => {
               const current = prev || {};
-              const newData = docSnap.data();
-              // Only update if something actually changed to prevent excessive re-renders
-              if (JSON.stringify(current) === JSON.stringify({ ...current, ...newData })) return current;
+              let hasChanges = false;
+              for (const key in newData) {
+                if (JSON.stringify(current[key]) !== JSON.stringify(newData[key])) {
+                  hasChanges = true;
+                  break;
+                }
+              }
+              if (!hasChanges) return current;
               return { ...current, ...newData };
             });
             if (docSnap.data()?.colorMode) {
@@ -220,12 +233,20 @@ export default function App() {
           handleFirestoreError(error, OperationType.GET, userDocRef.path);
         });
 
-        const unsubStatsDoc = onSnapshot(doc(db, "stats", effectiveUid), (docSnap) => {
+        unsubStatsDoc = onSnapshot(doc(db, "stats", effectiveUid), (docSnap) => {
+          if (!isCurrent) return;
           if (docSnap.exists()) {
+            const newData = docSnap.data();
             setUserData((prev: any) => {
               const current = prev || {};
-              const newData = docSnap.data();
-              if (JSON.stringify(current) === JSON.stringify({ ...current, ...newData })) return current;
+              let hasChanges = false;
+              for (const key in newData) {
+                if (JSON.stringify(current[key]) !== JSON.stringify(newData[key])) {
+                  hasChanges = true;
+                  break;
+                }
+              }
+              if (!hasChanges) return current;
               return { ...current, ...newData };
             });
           }
@@ -233,13 +254,9 @@ export default function App() {
           handleFirestoreError(error, OperationType.GET, `stats/${effectiveUid}`);
         });
         
-        unsubUser = () => {
-          unsubUserDoc();
-          unsubStatsDoc();
-        };
-        
         setLoading(false);
       } catch (err: any) {
+        if (!isCurrent) return;
         if (err?.message?.includes("Missing or insufficient permissions") || (err instanceof Error && err.name === "FirebaseError" && err.message.includes("permissions"))) {
           handleFirestoreError(err, OperationType.GET, userDocRef.path);
         } else {
@@ -253,11 +270,34 @@ export default function App() {
     initUser();
 
     return () => {
-      if (unsubUser) unsubUser();
+      isCurrent = false;
+      if (unsubUserDoc) unsubUserDoc();
+      if (unsubStatsDoc) unsubStatsDoc();
     };
   }, [user?.uid]);
 
-  // Global Check for Reminders every 30 seconds
+  useEffect(() => {
+    if (darkMode) {
+      document.documentElement.classList.add('dark');
+      document.documentElement.style.backgroundColor = '#0a0a0a';
+      document.body.style.backgroundColor = '#0a0a0a';
+    } else {
+      document.documentElement.classList.remove('dark');
+      document.documentElement.style.backgroundColor = '#fafafa';
+      document.body.style.backgroundColor = '#fafafa';
+    }
+  }, [darkMode]);
+
+  // Request HTML5 browser notification permissions
+  useEffect(() => {
+    if (typeof window !== "undefined" && "Notification" in window) {
+      if (Notification.permission === "default") {
+        Notification.requestPermission().catch(err => console.error("Error requesting notification permission:", err));
+      }
+    }
+  }, []);
+
+  // Global Check for Reminders every 20 seconds
   useEffect(() => {
     if (!user) return;
     
@@ -270,39 +310,57 @@ export default function App() {
       activeReminders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     }, (err) => console.error("Snapshot error:", err));
 
+    const firedIds = new Set<string>();
+
     const checkReminders = async () => {
       const now = new Date();
-      // Local date YYYY-MM-DD
-      const year = now.getFullYear();
-      const month = String(now.getMonth() + 1).padStart(2, '0');
-      const day = String(now.getDate()).padStart(2, '0');
-      const currentDay = `${year}-${month}-${day}`;
-      
-      const currentTime = now.toTimeString().slice(0, 5); // HH:MM
+      const nowTime = now.getTime();
 
       for (const data of activeReminders) {
-        if (data.date === currentDay && data.time === currentTime && data.status === "pending") {
-           // Show notification
-           setNotification({
-             title: `Study Session: ${data.subject}`,
-             body: `Time to study "${data.topic}" now!`
-           });
-           
-           // Mark as completed in DB immediately to prevent double-firing
-           try {
-             const reminderRef = doc(db, "users", effectiveUid, "reminders", data.id);
-             await updateDoc(reminderRef, { status: "completed" });
-           } catch (err) {
-             console.error("Failed to update reminder status:", err);
-           }
+        if (data.status === "pending" && !firedIds.has(data.id) && data.date && data.time) {
+          try {
+            const [remYear, remMonth, remDay] = data.date.split("-").map(Number);
+            const [remHour, remMin] = data.time.split(":").map(Number);
+            const remDateObj = new Date(remYear, remMonth - 1, remDay, remHour, remMin);
+            const remTime = remDateObj.getTime();
 
-           // Clear notification after 15s
-           setTimeout(() => setNotification(null), 15000);
+            // Fire if scheduled time is reached and not older than 1 day
+            if (nowTime >= remTime && (nowTime - remTime) < 86400000) {
+              firedIds.add(data.id);
+
+              // 1. Trigger in-app toast notification layout
+              setNotification({
+                title: `Study Session: ${data.subject}`,
+                body: `Time to study "${data.topic}" now!`
+              });
+
+              // 2. Trigger native device level tray Notification
+              if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
+                try {
+                  new Notification(`Study Session: ${data.subject}`, {
+                    body: `Time to study "${data.topic}" now! (ScholarAI Pulse)`,
+                    icon: "/favicon.ico"
+                  });
+                } catch (notiErr) {
+                  console.error("Local Notification fail:", notiErr);
+                }
+              }
+
+              // 3. Persist status change to Firestore immediately
+              const reminderRef = doc(db, "users", effectiveUid, "reminders", data.id);
+              await updateDoc(reminderRef, { status: "completed" });
+
+              // Auto-clear toast overlay in 15s
+              setTimeout(() => setNotification(null), 15000);
+            }
+          } catch (err) {
+            console.error("Failed processing Study Pulse reminder item:", err);
+          }
         }
       }
     };
 
-    const timer = setInterval(checkReminders, 30000);
+    const timer = setInterval(checkReminders, 20000);
     return () => {
       clearInterval(timer);
       unsubscribe();
@@ -482,7 +540,7 @@ export default function App() {
                ) : user.photoURL ? (
                  <img src={user.photoURL} alt="pfp" className="w-full h-full object-cover" />
                ) : (
-                 <span className="opacity-50 tracking-tighter">AI</span>
+                 <span className="opacity-50 tracking-tighter">{userData?.nickname?.[0] || "AI"}</span>
                )}
             </div>
           </div>

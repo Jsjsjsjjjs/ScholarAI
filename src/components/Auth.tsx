@@ -44,7 +44,7 @@ export default function Auth({ onLogin }: { onLogin: () => void }) {
   };
 
   return (
-    <div className="h-screen w-full flex flex-col items-center justify-center bg-neutral-950 text-white p-4 relative overflow-hidden">
+    <div className="min-h-screen w-full flex flex-col items-center justify-center bg-neutral-950 text-white p-4 relative overflow-hidden">
       {/* Background elements */}
       <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-orange-500/10 rounded-full blur-3xl animate-pulse pointer-events-none" />
       <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl animate-pulse delay-1000 pointer-events-none" />

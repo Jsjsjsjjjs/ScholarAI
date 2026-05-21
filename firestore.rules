@@ -86,15 +86,8 @@ service cloud.firestore {
 
     // Paths
     match /users/{userId} {
-      allow read: if isOwner(userId) || isAdmin() || isAuthed();
-      allow create: if isOwnerVerified(userId) && 
-                       isValidUser(incoming()) && 
-                       incoming().uid == request.auth.uid &&
-                       incoming().nickname is string &&
-                       incoming().email is string &&
-                       incoming().joinedAt == request.time &&
-                       (!('role' in incoming()) || incoming().role == 'scholar' || request.auth.token.email == 'arunwarrior98789@gmail.com');
-      allow update: if isOwnerVerified(userId) || isAuthed();
+      allow read: if request.auth != null || resource.id == userId;
+      allow write: if request.auth != null && request.auth.uid == userId;
 
       match /doubts/{doubtId} {
         allow read: if isOwner(userId) || isAdmin() || isAuthed();

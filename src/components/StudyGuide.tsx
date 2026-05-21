@@ -7,8 +7,6 @@ import { cn } from "../lib/utils";
 import { updateProgress, trackAIUsage } from "../lib/firebase";
 import { generateNotes as clientGenerateNotes } from "../lib/gemini";
 import { useOnlineStatus, saveNotesToCache, getNotesFromCache, getAllCachedNotes, CachedNotes } from "../lib/offlineCache";
-import { toPng } from 'html-to-image';
-import jsPDF from "jspdf";
 import { motion, AnimatePresence } from "motion/react";
 
 export default function StudyGuide() {
@@ -22,7 +20,7 @@ export default function StudyGuide() {
   const [cachedNotesList, setCachedNotesList] = useState<CachedNotes[]>([]);
   const notesRef = useRef<HTMLDivElement>(null);
   const pdfRenderRef = useRef<HTMLDivElement>(null);
-  const [exportingState, setExportingState] = useState<"idle" | "preparing_png" | "rendering_png" | "preparing_pdf" | "rendering_pdf" | "preparing_md" | "success" | "error">("idle");
+  const [exportingState, setExportingState] = useState<"idle" | "preparing_pdf" | "rendering_pdf" | "preparing_md" | "success" | "error">("idle");
   const isOnline = useOnlineStatus();
 
   useEffect(() => {
@@ -89,50 +87,6 @@ export default function StudyGuide() {
     } catch (err: any) {
       console.error('Markdown export failed:', err);
       setExportError('⚠️ Failed to export Markdown: ' + (err.message || String(err)));
-      setExportingState('error');
-      setTimeout(() => setExportingState('idle'), 4000);
-    }
-  };
-
-  const exportAsImage = async () => {
-    if (!notesRef.current || exportingState !== 'idle') return;
-    setExportingState('preparing_png');
-    setExportError(null);
-    try {
-      // Extra timeout delay so that the DOM actually paints the 'processing' state before block
-      await new Promise((resolve) => setTimeout(resolve, 150));
-      setExportingState('rendering_png');
-      await new Promise((resolve) => setTimeout(resolve, 50));
-
-      const height = notesRef.current.offsetHeight || 1000;
-      const width = notesRef.current.offsetWidth || 800;
-      // High adaptive quality ratio, fully optimized with skipFonts
-      const adaptiveRatio = height > 3500 ? 2.5 : (height > 1800 ? 3.0 : 3.5);
-
-      const dataUrl = await toPng(notesRef.current, { 
-        backgroundColor: isHandwritten ? '#fff9e6' : '#0d0d0d',
-        quality: 1.0,
-        pixelRatio: adaptiveRatio,
-        skipFonts: true, // Avoid crawling full-page stylesheets - speeds up rendering 100x and prevents UI freeze
-        cacheBust: true,
-        style: {
-          transform: 'scale(1)',
-          transformOrigin: 'top left',
-          width: `${width}px`,
-          height: `${height}px`,
-          WebkitFontSmoothing: 'antialiased',
-          MozOsxFontSmoothing: 'grayscale',
-        } as any
-      });
-      const a = document.createElement('a');
-      a.href = dataUrl;
-      a.download = topic.replace(/\s+/g, '-').toLowerCase() + '_notes.png';
-      a.click();
-      setExportingState('success');
-      setTimeout(() => setExportingState('idle'), 3000);
-    } catch (err: any) {
-      console.error('Export failed:', err);
-      setExportError('⚠️ Failed to export as image: ' + (err.message || String(err)));
       setExportingState('error');
       setTimeout(() => setExportingState('idle'), 4000);
     }
@@ -274,14 +228,6 @@ export default function StudyGuide() {
               Markdown
             </button>
             <button 
-              onClick={exportAsImage}
-              disabled={exportingState !== "idle"}
-              className="px-4 py-2 bg-neutral-800 text-neutral-400 rounded-xl text-xs font-bold uppercase tracking-wider flex items-center gap-2 hover:text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <ImageIcon size={14} />
-              PNG
-            </button>
-            <button 
               onClick={exportAsPDF}
               disabled={exportingState !== "idle"}
               className="px-4 py-2 bg-neutral-800 text-neutral-400 rounded-xl text-xs font-bold uppercase tracking-wider flex items-center gap-2 hover:text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
@@ -395,8 +341,6 @@ export default function StudyGuide() {
                 <p className="text-[10px] uppercase font-black tracking-widest text-neutral-400 leading-none mb-1">Exporter System</p>
                 <p className="text-xs font-bold leading-tight">
                   {exportingState === "preparing_md" && "Assembling Markdown..."}
-                  {exportingState === "preparing_png" && "Preparing graphics canvas..."}
-                  {exportingState === "rendering_png" && "Rasterizing high-resolution PNG notes..."}
                   {exportingState === "preparing_pdf" && "Formatting document structures..."}
                   {exportingState === "rendering_pdf" && "Rendering high-resolution PDF document..."}
                   {exportingState === "success" && "Download initiated successfully!"}

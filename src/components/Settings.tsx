@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Copy, Check, Palette, User as UserIcon, LogOut, Shield, Zap, Sparkles, Loader2, MessageSquare, ExternalLink, CreditCard, RefreshCw } from "lucide-react";
 import { db, auth, signOut, handleFirestoreError, OperationType, syncEliteQuota } from "../lib/firebase";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
@@ -16,7 +16,24 @@ export default function Settings({ userData }: { userData: any }) {
   const [fixing, setFixing] = useState(false);
   const [fixResult, setFixResult] = useState<string | null>(null);
 
-  const [discordError, setDiscordError] = useState<string | null>(null);
+  const isMounted = useRef(true);
+
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (userData) {
+      if (userData.nickname) setNickname(userData.nickname);
+      if (userData.discordName) setDiscordName(userData.discordName);
+      if (userData.discordUsername) setDiscordUsername(userData.discordUsername);
+      if (userData.discordAvatar) setDiscordAvatar(userData.discordAvatar);
+    }
+  }, [userData]);
+
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [refreshLogs, setRefreshLogs] = useState<string[]>([]);
   const [showUpgradeInstructions, setShowUpgradeInstructions] = useState(false);
@@ -40,76 +57,37 @@ export default function Settings({ userData }: { userData: any }) {
 
     try {
       for (const log of logs) {
+        if (!isMounted.current) return;
         setRefreshLogs(prev => [...prev, log]);
         await new Promise(r => setTimeout(r, 400));
       }
 
+      if (!isMounted.current) return;
       // Perform real sync
       await syncEliteQuota();
       
     } catch (err) {
       console.error("Refresh failed:", err);
-      setRefreshLogs(prev => [...prev, "ERROR: Quota synchronization interrupted by network latency."]);
+      if (isMounted.current) {
+        setRefreshLogs(prev => [...prev, "ERROR: Quota synchronization interrupted by network latency."]);
+      }
     } finally {
-      setIsRefreshing(false);
-      // Keep logs visible for a bit longer to look "pro"
-      setTimeout(() => setRefreshLogs([]), 5000);
-    }
-  };
-
-  useEffect(() => {
-    // Capture access token from URL hash (Implicit Grant redirect from Discord)
-    const hash = window.location.hash;
-    if (hash && hash.includes("access_token")) {
-      const params = new URLSearchParams(hash.substring(1));
-      const accessToken = params.get("access_token");
-      if (accessToken) {
-        // Clear hash from address bar
-        window.history.replaceState(null, "", window.location.pathname + window.location.search);
-        
-        setDiscordError(null);
-        // Fetch profile details directly from Discord API
-        fetch("https://discord.com/api/users/@me", {
-          headers: { Authorization: `Bearer ${accessToken}` }
-        })
-          .then(async (res) => {
-            if (!res.ok) throw new Error("Could not load account details from Discord.");
-            const data = await res.json();
-            setDiscordName(data.global_name || data.username);
-            setDiscordUsername(data.username);
-            setDiscordAvatar(data.avatar ? `https://cdn.discordapp.com/avatars/${data.id}/${data.avatar}.png` : "");
-          })
-          .catch((err) => {
-            console.error("Discord error:", err);
-            setDiscordError("Failed to fetch Discord profile client-side.");
-          });
+      if (isMounted.current) {
+        setIsRefreshing(false);
+        // Keep logs visible for a bit longer to look "pro"
+        setTimeout(() => {
+          if (isMounted.current) setRefreshLogs([]);
+        }, 5000);
       }
-    }
-  }, []);
-
-  const handleLinkDiscord = async () => {
-    setDiscordError(null);
-    try {
-      const clientId = process.env.DISCORD_CLIENT_ID;
-      if (!clientId) {
-        throw new Error("Discord API is not configured. Please set DISCORD_CLIENT_ID in settings.");
-      }
-      
-      const origin = window.location.origin;
-      const redirectUri = `${origin}/settings`; // Or whichever is active
-      const url = `https://discord.com/api/oauth2/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=token&scope=identify`;
-      
-      window.open(url, 'discord_auth', 'width=500,height=800');
-    } catch (err: any) {
-      console.error("Link Discord error:", err);
-      setDiscordError(err.message || "Failed to initiate Discord linking.");
     }
   };
 
   const copyId = () => {
     navigator.clipboard.writeText(userData?.uid || "");
     setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    setTimeout(() => {
+      if (isMounted.current) setCopied(false);
+    }, 2000);
   };
 
   const updateProfile = async () => {
@@ -128,7 +106,7 @@ export default function Settings({ userData }: { userData: any }) {
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `users/stats/${userData.uid}`);
     } finally {
-      setUpdating(false);
+      if (isMounted.current) setUpdating(false);
     }
   };
 
@@ -154,22 +132,20 @@ export default function Settings({ userData }: { userData: any }) {
         "Validating hydration of UserData node...",
         "Purging stagnant cache descriptors...",
         "Optimizing mathematical operator precedence in AI templates...",
-        "Verifying Discord integration credentials...",
         "Benchmarking Gemini API latency..."
       ];
       
       for (const log of logs) {
+        if (!isMounted.current) return;
         setFixResult(log);
         await new Promise(r => setTimeout(r, 600));
       }
 
+      if (!isMounted.current) return;
       const errorContext = `User ID: ${userData?.uid || 'guest'}. Full System Scan requested to fix all formatting and sync errors.`;
       let resultText = await smartFix(errorContext);
       
-      if (!process.env.DISCORD_CLIENT_ID) {
-        resultText += "\n\n⚠️ SYSTEM ALERT: Discord Client Identity is not configured in the environment. Social linking will be restricted until the administrator adds DISCORD_CLIENT_ID.";
-      }
-      
+      if (!isMounted.current) return;
       setFixResult(resultText);
       
       // Persist "fixed" state locally to simulate actual change
@@ -177,12 +153,14 @@ export default function Settings({ userData }: { userData: any }) {
       localStorage.setItem("last_fix_timestamp", new Date().toISOString());
       
       // Update nickname locally if it was missing or corrupted (re-fetch)
-      if (!nickname && userData?.nickname) setNickname(userData.nickname);
+      if (!nickname && userData?.nickname && isMounted.current) setNickname(userData.nickname);
       
     } catch (err) {
-      setFixResult("Critical System Analysis: LaTeX rendering parameters have been reset. Indentation logic in markdown parser updated. Session token refreshed and sync latency reduced to 12ms. All core educational services are now operating at 100% fidelity.");
+      if (isMounted.current) {
+        setFixResult("Critical System Analysis: LaTeX rendering parameters have been reset. Indentation logic in markdown parser updated. Session token refreshed and sync latency reduced to 12ms. All core educational services are now operating at 100% fidelity.");
+      }
     } finally {
-      setFixing(false);
+      if (isMounted.current) setFixing(false);
     }
   };
 
@@ -376,6 +354,8 @@ export default function Settings({ userData }: { userData: any }) {
           </div>
         </div>
 
+
+
         {/* Discord Integration */}
         <div className="p-8 bg-neutral-900 border border-[#5865F2]/20 rounded-3xl relative overflow-hidden group">
           <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
@@ -388,38 +368,6 @@ export default function Settings({ userData }: { userData: any }) {
              Elite Discord Identity
           </h3>
           
-          <div className="mb-8 p-6 bg-[#5865F2]/5 border border-[#5865F2]/20 rounded-2xl">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
-              <div className="space-y-1">
-                <p className="text-[#5865F2] text-[10px] font-black uppercase tracking-[0.2em] mb-1">Authenticated Sync</p>
-                <p className="text-neutral-400 text-sm font-bold leading-tight">Fetch your Discord profile (Avatar, Status, and Username) instantly.</p>
-              </div>
-              <button 
-                onClick={handleLinkDiscord}
-                className="w-full sm:w-auto bg-[#5865F2] text-white text-xs font-black uppercase tracking-widest px-8 py-4 rounded-2xl hover:bg-[#4752c4] transition-all flex items-center justify-center gap-3 shadow-xl shadow-[#5865F2]/20 active:scale-95 shrink-0"
-              >
-                <ExternalLink size={16} />
-                Link Account
-              </button>
-            </div>
-
-            {discordError && (
-              <div className="mt-4 p-4 bg-red-500/10 border border-red-500/20 rounded-xl flex items-center gap-3">
-                 <div className="w-6 h-6 rounded-full bg-red-500/20 flex items-center justify-center shrink-0">
-                    <span className="text-red-500 font-black text-xs">!</span>
-                 </div>
-                 <p className="text-red-500 text-[10px] font-bold uppercase tracking-widest leading-tight">{discordError}</p>
-              </div>
-            )}
-            
-            <div className="mt-6 p-4 bg-black/40 rounded-xl border border-white/5 flex items-start gap-3">
-               <Shield size={16} className="text-[#5865F2] shrink-0 mt-0.5" />
-               <p className="text-[10px] text-neutral-500 font-medium leading-relaxed italic">
-                  Note: This feature requires <code className="text-[#5865F2] font-bold">DISCORD_CLIENT_ID</code> to be configured by the project administrator in the System Settings.
-               </p>
-            </div>
-          </div>
-
           <div className="space-y-6 relative z-10">
             <div className="flex items-center gap-4 text-[10px] font-black text-neutral-600 tracking-widest uppercase">
                <div className="h-px flex-1 bg-neutral-800"></div>
@@ -434,7 +382,7 @@ export default function Settings({ userData }: { userData: any }) {
                   value={discordName}
                   onChange={(e) => setDiscordName(e.target.value)}
                   placeholder="e.g. Alex"
-                  className="w-full bg-black/40 border border-neutral-800 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-[#5865F2] transition-all font-bold placeholder:text-neutral-700"
+                  className="w-full bg-black/40 border border-neutral-800 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-[#5865F2] transition-all font-bold placeholder:text-neutral-700 font-sans"
                 />
               </div>
               <div className="space-y-2">
@@ -444,7 +392,7 @@ export default function Settings({ userData }: { userData: any }) {
                   value={discordUsername}
                   onChange={(e) => setDiscordUsername(e.target.value)}
                   placeholder="e.g. alex_01"
-                  className="w-full bg-black/40 border border-neutral-800 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-[#5865F2] transition-all font-bold placeholder:text-neutral-700"
+                  className="w-full bg-black/40 border border-neutral-800 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-[#5865F2] transition-all font-bold placeholder:text-neutral-700 font-sans"
                 />
               </div>
             </div>
@@ -455,14 +403,14 @@ export default function Settings({ userData }: { userData: any }) {
                 value={discordAvatar}
                 onChange={(e) => setDiscordAvatar(e.target.value)}
                 placeholder="https://cdn.discordapp.com/..."
-                className="w-full bg-black/40 border border-neutral-800 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-[#5865F2] transition-all font-bold placeholder:text-neutral-700"
+                className="w-full bg-black/40 border border-neutral-800 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-[#5865F2] transition-all font-bold placeholder:text-neutral-700 font-sans"
               />
             </div>
 
             <button 
               onClick={updateProfile}
               disabled={updating}
-              className="w-full py-4 bg-[#5865F2] text-white font-black rounded-2xl flex items-center justify-center gap-3 hover:bg-[#4752c4] transition-all"
+              className="w-full py-4 bg-[#5865F2] text-white font-black rounded-2xl flex items-center justify-center gap-3 hover:bg-[#4752c4] transition-all cursor-pointer font-sans"
             >
               {updating ? <Loader2 className="animate-spin" size={20} /> : "Update Discord Identity"}
             </button>
