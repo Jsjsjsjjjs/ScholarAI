@@ -95,14 +95,11 @@ export default function StudyGuide() {
   const exportAsPDF = async () => {
     setExportingState('preparing_pdf');
     try {
-      document.body.classList.add('handwritten-container');
       await new Promise((resolve) => setTimeout(resolve, 50));
       window.print();
-      document.body.classList.remove('handwritten-container');
       setExportingState('success');
       setTimeout(() => setExportingState('idle'), 1500);
     } catch (err: any) {
-      document.body.classList.remove('handwritten-container');
       console.error('PDF Export failed:', err);
       setExportError('⚠️ Failed to export as PDF: ' + (err.message || String(err)));
       setExportingState('error');
@@ -115,13 +112,13 @@ export default function StudyGuide() {
   return (
     <div className="space-y-8 animate-fade-in">
       {!isOnline && (
-        <div className="bg-amber-500/10 border border-amber-500/20 text-amber-500 rounded-2xl p-4 flex items-center gap-3 font-semibold text-xs animate-in slide-in-from-top-4 duration-300">
+        <div className="bg-amber-500/10 border border-amber-500/20 text-amber-500 rounded-2xl p-4 flex items-center gap-3 font-semibold text-xs animate-in slide-in-from-top-4 duration-300 print:hidden">
           <WifiOff size={16} className="shrink-0" />
           <span>Offline Mode: Showing cached guides. Connect to the internet to generate new topics.</span>
         </div>
       )}
 
-      <div className="bg-neutral-900 border border-neutral-800 rounded-3xl p-8 shadow-xl">
+      <div className="bg-neutral-900 border border-neutral-800 rounded-3xl p-8 shadow-xl print:hidden">
         <h2 className="text-2xl font-bold mb-6 flex items-center gap-2">
           <Book className="text-orange-500" />
           Smart Study Guide
@@ -211,7 +208,7 @@ export default function StudyGuide() {
 
       {notes && (
         <div className="space-y-4">
-          <div className="flex flex-wrap gap-3 justify-end print-button-container">
+          <div className="flex flex-wrap gap-3 justify-end print:hidden">
             <button 
               onClick={() => setIsHandwritten(!isHandwritten)}
               className={cn(
@@ -241,7 +238,7 @@ export default function StudyGuide() {
           </div>
 
           {exportError && (
-            <div className="p-3 bg-red-500/10 border border-red-500/20 text-red-500 rounded-xl text-xs font-medium flex items-center justify-between">
+            <div className="p-3 bg-red-500/10 border border-red-500/20 text-red-500 rounded-xl text-xs font-medium flex items-center justify-between print:hidden">
               <span>{exportError}</span>
               <button onClick={() => setExportError(null)} className="hover:text-red-400 font-bold ml-2">Dismiss</button>
             </div>
@@ -250,7 +247,7 @@ export default function StudyGuide() {
           <div 
             ref={notesRef}
             className={cn(
-              "rounded-3xl p-6 md:p-12 shadow-2xl transition-all duration-500",
+              "rounded-3xl p-6 md:p-12 shadow-2xl transition-all duration-500 print:hidden",
               isHandwritten 
                 ? "bg-[#fff9e6] text-[#2c1810] font-handwritten text-xl leading-relaxed border-2 border-[#e6dcc0]" 
                 : "bg-neutral-900 border border-neutral-800 text-neutral-200"

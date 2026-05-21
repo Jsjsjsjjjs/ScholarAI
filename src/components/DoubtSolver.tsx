@@ -128,7 +128,7 @@ export default function DoubtSolver() {
   };
 
   return (
-    <div className="fixed bottom-8 right-8 z-50 scholar-assistant-bubble">
+    <div className="fixed bottom-8 right-8 z-50">
       <AnimatePresence>
         {isOpen && (
           <motion.div
