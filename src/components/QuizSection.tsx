@@ -200,8 +200,8 @@ export default function QuizSection() {
         </div>
 
         <div className="p-8 bg-neutral-900 rounded-3xl border border-neutral-800 shadow-xl">
-          <div className="text-2xl font-bold mb-8 leading-tight prose prose-invert prose-2xl max-w-none">
-            <Markdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>{q.question}</Markdown>
+          <div className="text-2xl font-bold mb-8 leading-tight prose prose-invert prose-2xl max-w-none whitespace-pre-line">
+            <Markdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>{q.question?.replace(/\\n/g, '\n').replace(/\n/g, '\n\n').replace(/\n{3,}/g, '\n\n') || ""}</Markdown>
           </div>
           
           <div className="space-y-3">
@@ -226,8 +226,8 @@ export default function QuizSection() {
                     style
                   )}
                 >
-                  <div className="font-medium prose prose-invert prose-sm">
-                    <Markdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>{opt}</Markdown>
+                  <div className="font-medium prose prose-invert prose-sm whitespace-pre-line">
+                    <Markdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>{opt?.replace(/\\n/g, '\n').replace(/\n/g, '\n\n').replace(/\n{3,}/g, '\n\n') || ""}</Markdown>
                   </div>
                   {selected && isCorrect && <CheckCircle2 size={20} className="text-green-500 shrink-0" />}
                   {selected && isSelected && !isCorrect && <XCircle size={20} className="text-red-500 shrink-0" />}
@@ -243,8 +243,8 @@ export default function QuizSection() {
               <Info size={16} />
               AI Solution & Explanation
             </div>
-            <div className="text-neutral-300 text-sm leading-relaxed prose prose-invert prose-sm">
-              <Markdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>{q.explanation}</Markdown>
+            <div className="text-neutral-300 text-sm leading-relaxed prose prose-invert prose-sm whitespace-pre-line">
+              <Markdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>{q.explanation?.replace(/\\n/g, '\n').replace(/\n/g, '\n\n').replace(/\n{3,}/g, '\n\n') || ""}</Markdown>
             </div>
             <button
                onClick={nextQuestion}
