@@ -11,8 +11,7 @@ const ScholarStatsCard = memo(({ userData }: { userData: any }) => {
     try {
       await new Promise((resolve) => setTimeout(resolve, 150));
       window.print();
-      setExportState("success");
-      setTimeout(() => setExportState("idle"), 3000);
+      setExportState("idle");
     } catch (err) {
       console.error("Stats print failed:", err);
       setExportState("error");

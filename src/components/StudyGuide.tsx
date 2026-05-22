@@ -82,8 +82,7 @@ export default function StudyGuide() {
       a.download = topic.replace(/\s+/g, '-').toLowerCase() + '_notes.md';
       a.click();
       URL.revokeObjectURL(url);
-      setExportingState('success');
-      setTimeout(() => setExportingState('idle'), 3000);
+      setExportingState('idle');
     } catch (err: any) {
       console.error('Markdown export failed:', err);
       setExportError('⚠️ Failed to export Markdown: ' + (err.message || String(err)));
@@ -94,37 +93,15 @@ export default function StudyGuide() {
 
   const exportAsPDF = async () => {
     setExportingState('preparing_pdf');
-    
-    // Add pre-print cleanup and post-print restoration
-    window.onbeforeprint = () => {
-      const popups = document.querySelectorAll('.exporter-system-popup, [role="status"]');
-      popups.forEach(p => {
-        (p as HTMLElement).style.display = 'none';
-      });
-    };
-
-    window.onafterprint = () => {
-      const popups = document.querySelectorAll('.exporter-system-popup, [role="status"]');
-      popups.forEach(p => {
-        // Restore elements default display value
-        (p as HTMLElement).style.display = '';
-      });
-    };
-
     try {
       await new Promise((resolve) => setTimeout(resolve, 50));
       window.print();
-      setExportingState('success');
-      setTimeout(() => setExportingState('idle'), 1500);
+      setExportingState('idle');
     } catch (err: any) {
       console.error('PDF Export failed:', err);
       setExportError('⚠️ Failed to export as PDF: ' + (err.message || String(err)));
       setExportingState('error');
       setTimeout(() => setExportingState('idle'), 4000);
-    } finally {
-      // Clean up the listeners to avoid any side effects
-      window.onbeforeprint = null;
-      window.onafterprint = null;
     }
   };
 
@@ -341,7 +318,7 @@ export default function StudyGuide() {
             initial={{ opacity: 0, y: 30, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 30, scale: 0.95 }}
-            className={`exporter-system-popup fixed bottom-8 right-8 z-50 p-5 rounded-2xl border flex items-center gap-3.5 shadow-2xl backdrop-blur-md max-w-sm ${exportingState === "success" ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" : exportingState === "error" ? "bg-red-500/10 border-red-500/20 text-red-400" : "bg-neutral-900 border-neutral-800 text-white"}`}
+            className={`fixed bottom-8 right-8 z-50 p-5 rounded-2xl border flex items-center gap-3.5 shadow-2xl backdrop-blur-md max-w-sm ${exportingState === "success" ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" : exportingState === "error" ? "bg-red-500/10 border-red-500/20 text-red-400" : "bg-neutral-900 border-neutral-800 text-white"}`}
           >
             <div className="flex items-center gap-3">
               {(exportingState.startsWith("preparing") || exportingState.startsWith("rendering")) ? (
