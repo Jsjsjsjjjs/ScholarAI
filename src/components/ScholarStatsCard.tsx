@@ -4,18 +4,18 @@ import { motion, AnimatePresence } from "motion/react";
 
 const ScholarStatsCard = memo(({ userData }: { userData: any }) => {
   const cardRef = useRef<HTMLDivElement>(null);
-  const [exportState, setExportState] = useState<"idle" | "preparing" | "rendering" | "success" | "error">("idle");
+  const [exporting, setExporting] = useState(false);
 
   const printStats = async () => {
-    setExportState("preparing");
+    if (exporting) return;
+    setExporting(true);
     try {
       await new Promise((resolve) => setTimeout(resolve, 150));
       window.print();
-      setExportState("idle");
     } catch (err) {
       console.error("Stats print failed:", err);
-      setExportState("error");
-      setTimeout(() => setExportState("idle"), 4000);
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -25,14 +25,14 @@ const ScholarStatsCard = memo(({ userData }: { userData: any }) => {
         <div>
            <h3 className="text-lg font-black tracking-tight text-white">Elite Scholar Pass</h3>
            <p className="text-xs text-neutral-500 font-bold uppercase tracking-widest">Share your academic milestones</p>
-        </div>
+         </div>
         <button 
           onClick={printStats}
-          disabled={exportState !== "idle"}
+          disabled={exporting}
           className="px-5 py-2.5 bg-white text-black rounded-xl font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-orange-500 hover:text-white transition-all shadow-xl active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Download size={16} />
-          {exportState !== "idle" ? "Processing..." : "Export"}
+          {exporting ? "Processing..." : "Export"}
         </button>
       </div>
 
@@ -117,49 +117,6 @@ const ScholarStatsCard = memo(({ userData }: { userData: any }) => {
           </div>
         </div>
       </div>
-
-      <AnimatePresence>
-        {exportState !== "idle" && (
-          <motion.div
-            initial={{ opacity: 0, y: 30, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 30, scale: 0.95 }}
-            className={`fixed bottom-8 right-8 z-50 p-5 rounded-2xl border flex items-center gap-3.5 shadow-2xl backdrop-blur-md max-w-sm ${
-              exportState === "success" 
-                ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" 
-                : exportState === "error"
-                  ? "bg-red-500/10 border-red-500/20 text-red-400"
-                  : "bg-neutral-900 border-neutral-800 text-white"
-            }`}
-          >
-            <div className="flex items-center gap-3">
-              {(exportState === "preparing" || exportState === "rendering") ? (
-                <div className="w-8 h-8 rounded-full border-2 border-orange-500 border-t-transparent animate-spin flex items-center justify-center shrink-0" />
-              ) : exportState === "success" ? (
-                <div className="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center shrink-0">
-                  <svg className="w-5 h-5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                  </svg>
-                </div>
-              ) : (
-                <div className="w-8 h-8 rounded-full bg-red-500/20 flex items-center justify-center shrink-0">
-                  <span className="font-extrabold text-sm">!</span>
-                </div>
-              )}
-              
-              <div>
-                <p className="text-[10px] uppercase font-black tracking-widest text-neutral-400 leading-none mb-1">Scholar Card System</p>
-                <p className="text-xs font-bold leading-tight">
-                  {exportState === "preparing" && "Preparing graphics pass..."}
-                  {exportState === "rendering" && "Pixelating high-fidelity PNG card..."}
-                  {exportState === "success" && "Elite Card saved successfully!"}
-                  {exportState === "error" && "Export processing halted with errors."}
-                </p>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   );
 });

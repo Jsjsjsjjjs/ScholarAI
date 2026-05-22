@@ -96,8 +96,12 @@
   .export-success-toast, 
   .green-popup-class, 
   [role="status"], 
+  div[class*="exporter"], 
   div:has(> .exporter-system-popup) {
     display: none !important;
+    visibility: hidden !important;
+    position: absolute !important;
+    top: -9999px !important;
   }
 
   /* Support responsive container rendering */

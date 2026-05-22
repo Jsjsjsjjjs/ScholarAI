@@ -20,7 +20,7 @@ export default function StudyGuide() {
   const [cachedNotesList, setCachedNotesList] = useState<CachedNotes[]>([]);
   const notesRef = useRef<HTMLDivElement>(null);
   const pdfRenderRef = useRef<HTMLDivElement>(null);
-  const [exportingState, setExportingState] = useState<"idle" | "preparing_pdf" | "rendering_pdf" | "preparing_md" | "success" | "error">("idle");
+  const [exporting, setExporting] = useState(false);
   const isOnline = useOnlineStatus();
 
   useEffect(() => {
@@ -71,10 +71,9 @@ export default function StudyGuide() {
   };
 
   const downloadNotes = async () => {
-    if (!notes || exportingState !== 'idle') return;
-    setExportingState('preparing_md');
+    if (!notes || exporting) return;
+    setExporting(true);
     try {
-      await new Promise((resolve) => setTimeout(resolve, 250));
       const blob = new Blob([notes], { type: 'text/markdown' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -82,26 +81,25 @@ export default function StudyGuide() {
       a.download = topic.replace(/\s+/g, '-').toLowerCase() + '_notes.md';
       a.click();
       URL.revokeObjectURL(url);
-      setExportingState('idle');
     } catch (err: any) {
       console.error('Markdown export failed:', err);
       setExportError('⚠️ Failed to export Markdown: ' + (err.message || String(err)));
-      setExportingState('error');
-      setTimeout(() => setExportingState('idle'), 4000);
+    } finally {
+      setExporting(false);
     }
   };
 
   const exportAsPDF = async () => {
-    setExportingState('preparing_pdf');
+    if (exporting) return;
+    setExporting(true);
     try {
       await new Promise((resolve) => setTimeout(resolve, 50));
       window.print();
-      setExportingState('idle');
     } catch (err: any) {
       console.error('PDF Export failed:', err);
       setExportError('⚠️ Failed to export as PDF: ' + (err.message || String(err)));
-      setExportingState('error');
-      setTimeout(() => setExportingState('idle'), 4000);
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -219,7 +217,7 @@ export default function StudyGuide() {
             </button>
             <button 
               onClick={downloadNotes}
-              disabled={exportingState !== "idle"}
+              disabled={exporting}
               className="px-4 py-2 bg-neutral-800 text-neutral-400 rounded-xl text-xs font-bold uppercase tracking-wider flex items-center gap-2 hover:text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Download size={14} />
@@ -227,7 +225,7 @@ export default function StudyGuide() {
             </button>
             <button 
               onClick={exportAsPDF}
-              disabled={exportingState !== "idle"}
+              disabled={exporting}
               className="px-4 py-2 bg-neutral-800 text-neutral-400 rounded-xl text-xs font-bold uppercase tracking-wider flex items-center gap-2 hover:text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <FileOutput size={14} />
@@ -311,44 +309,6 @@ export default function StudyGuide() {
           </div>
         </div>
       )}
-
-      <AnimatePresence>
-        {exportingState !== "idle" && (
-          <motion.div
-            initial={{ opacity: 0, y: 30, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 30, scale: 0.95 }}
-            className={`fixed bottom-8 right-8 z-50 p-5 rounded-2xl border flex items-center gap-3.5 shadow-2xl backdrop-blur-md max-w-sm ${exportingState === "success" ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" : exportingState === "error" ? "bg-red-500/10 border-red-500/20 text-red-400" : "bg-neutral-900 border-neutral-800 text-white"}`}
-          >
-            <div className="flex items-center gap-3">
-              {(exportingState.startsWith("preparing") || exportingState.startsWith("rendering")) ? (
-                <div className="w-8 h-8 rounded-full border-2 border-orange-500 border-t-transparent animate-spin flex items-center justify-center shrink-0" />
-              ) : exportingState === "success" ? (
-                <div className="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center shrink-0">
-                  <svg className="w-5 h-5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                  </svg>
-                </div>
-              ) : (
-                <div className="w-8 h-8 rounded-full bg-red-500/20 flex items-center justify-center shrink-0">
-                  <span className="font-extrabold text-sm">!</span>
-                </div>
-              )}
-              
-              <div>
-                <p className="text-[10px] uppercase font-black tracking-widest text-neutral-400 leading-none mb-1">Exporter System</p>
-                <p className="text-xs font-bold leading-tight">
-                  {exportingState === "preparing_md" && "Assembling Markdown..."}
-                  {exportingState === "preparing_pdf" && "Formatting document structures..."}
-                  {exportingState === "rendering_pdf" && "Rendering high-resolution PDF document..."}
-                  {exportingState === "success" && "Download initiated successfully!"}
-                  {exportingState === "error" && "Export processing failed."}
-                </p>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   );                     
 }
