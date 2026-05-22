@@ -91,6 +91,15 @@
     display: none !important;
   }
 
+  /* Targeted removal of the export notification popup */
+  .exporter-system-popup, 
+  .export-success-toast, 
+  .green-popup-class, 
+  [role="status"], 
+  div:has(> .exporter-system-popup) {
+    display: none !important;
+  }
+
   /* Support responsive container rendering */
   .printable-area {
     position: static !important;
