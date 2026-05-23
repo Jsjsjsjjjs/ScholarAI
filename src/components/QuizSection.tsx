@@ -1,6 +1,7 @@
-import { useState, useEffect } from "react";
-import { BrainCircuit, Loader2, CheckCircle2, XCircle, Info, Trophy, RotateCcw, WifiOff } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { BrainCircuit, Loader2, CheckCircle2, XCircle, Info, Trophy, RotateCcw, WifiOff, MessageSquare, FileText } from "lucide-react";
 import { db, auth, serverTimestamp, handleFirestoreError, OperationType, updateProgress, trackAIUsage } from "../lib/firebase";
+import { elementToImageBlob, elementToPdfBlob, sendToDiscordWebhook } from "../lib/discord";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import Markdown from "react-markdown";
 import remarkMath from "remark-math";
@@ -16,7 +17,7 @@ interface Question {
   explanation: string;
 }
 
-export default function QuizSection() {
+export default function QuizSection({ userData }: { userData?: any }) {
   const [subject, setSubject] = useState("Science");
   const [topic, setTopic] = useState("");
   const [numQuestions, setNumQuestions] = useState(5);
@@ -29,12 +30,28 @@ export default function QuizSection() {
   const [showResult, setShowResult] = useState(false);
   const [showExplanation, setShowExplanation] = useState(false);
   const [cachedQuizzesList, setCachedQuizzesList] = useState<CachedQuiz[]>([]);
+  const [startTime, setStartTime] = useState<number | null>(null);
+  const [sharing, setSharing] = useState(false);
+  const [manualSharing, setManualSharing] = useState(false);
+  
+  const resultRef = useRef<HTMLDivElement>(null);
+  const quizPdfRef = useRef<HTMLDivElement>(null);
   
   const isOnline = useOnlineStatus();
 
   useEffect(() => {
     setCachedQuizzesList(getAllCachedQuizzes());
   }, [questions]);
+
+  // Automated Quiz Stats Dispatch on Show Result
+  useEffect(() => {
+    if (showResult && userData?.discordWebhookUrl) {
+      const timer = setTimeout(() => {
+        autoSendQuizStats();
+      }, 600);
+      return () => clearTimeout(timer);
+    }
+  }, [showResult]);
 
   const subjects = ["Hindi", "English", "Science", "Math", "SST"];
   const difficulties = ["Easy", "Medium", "Hard", "Expert"];
@@ -46,6 +63,7 @@ export default function QuizSection() {
     setCurrentIdx(0);
     setScore(0);
     setShowResult(false);
+    setStartTime(Date.now());
     try {
       if (!isOnline) {
         const cached = getQuizFromCache(subject, topic, difficulty);
@@ -115,6 +133,101 @@ export default function QuizSection() {
     }
   };
 
+  const autoSendQuizStats = async () => {
+    if (!userData?.discordWebhookUrl || sharing) return;
+    setSharing(true);
+    try {
+      const element = resultRef.current;
+      if (!element) return;
+      const imgBlob = await elementToImageBlob(element);
+      if (!imgBlob) return;
+      
+      const accuracy = (questions.length > 0) ? Math.round((score / questions.length) * 100) : 0;
+      const timeSeconds = startTime ? Math.floor((Date.now() - startTime) / 1000) : 0;
+      const timeStr = timeSeconds >= 60 
+        ? `${Math.floor(timeSeconds / 60)}m ${timeSeconds % 60}s`
+        : `${timeSeconds}s`;
+
+      const payload = {
+        embeds: [
+          {
+            title: "🏆 Academic Quiz Completed!",
+            description: `A customized AI-powered study assessment has been completed. Check out the statistics:`,
+            color: 0xF59E0B,
+            fields: [
+              { name: "Subject", value: subject, inline: true },
+              { name: "Topic", value: topic, inline: true },
+              { name: "Difficulty", value: difficulty, inline: true },
+              { name: "Final Score", value: `${score} / ${questions.length}`, inline: true },
+              { name: "Accuracy Rate", value: `${accuracy}%`, inline: true },
+              { name: "Time Elapsed", value: timeStr, inline: true }
+            ],
+            image: {
+              url: "attachment://quiz_results.png"
+            },
+            footer: {
+              text: `Submitted silently by scholar peer: ${userData?.nickname || "Academic Elite"}`
+            },
+            timestamp: new Date().toISOString()
+          }
+        ]
+      };
+
+      await sendToDiscordWebhook({
+        webhookUrl: userData.discordWebhookUrl,
+        payload,
+        fileBlob: imgBlob,
+        filename: "quiz_results.png"
+      });
+    } catch (err) {
+      console.error("Auto quiz-stats discord dispatch failed:", err);
+    } finally {
+      setSharing(false);
+    }
+  };
+
+  const shareQuizToDiscord = async () => {
+    if (questions.length === 0 || !userData?.discordWebhookUrl || manualSharing) return;
+    setManualSharing(true);
+    try {
+      const element = quizPdfRef.current;
+      if (!element) return;
+      const pdfBlob = await elementToPdfBlob(element);
+      
+      const accuracy = (questions.length > 0) ? Math.round((score / questions.length) * 100) : 0;
+
+      const payload = {
+        embeds: [
+          {
+            title: "📊 Custom Study Quiz Material Shared!",
+            description: `Complete questions, choices, answers, and detailed step-by-step AI guidelines have been processed and archived.`,
+            color: 0x5865F2,
+            fields: [
+              { name: "Subject", value: subject, inline: true },
+              { name: "Topic", value: topic, inline: true },
+              { name: "Accuracy", value: `${accuracy}%`, inline: true }
+            ],
+            footer: {
+              text: `Archived by ${userData?.nickname || "Academic Elite"}`
+            },
+            timestamp: new Date().toISOString()
+          }
+        ]
+      };
+
+      await sendToDiscordWebhook({
+        webhookUrl: userData.discordWebhookUrl,
+        payload,
+        fileBlob: pdfBlob,
+        filename: `quiz_material_${topic.replace(/\s+/g, '-').toLowerCase()}.pdf`
+      });
+    } catch (err) {
+      console.error("Shared Quiz PDF to Discord error:", err);
+    } finally {
+      setManualSharing(false);
+    }
+  };
+
   const updateStats = async () => {
     const scholarSessionId = localStorage.getItem("scholar_session_id");
     const activeUid = scholarSessionId || auth.currentUser?.uid;
@@ -160,28 +273,88 @@ export default function QuizSection() {
 
   if (showResult) {
     return (
-      <div className="text-center py-12 p-8 bg-neutral-900 rounded-3xl border border-neutral-800 shadow-2xl">
-        <Trophy size={80} className="text-yellow-500 mx-auto mb-6" />
-        <h2 className="text-4xl font-black mb-2">Quiz Complete!</h2>
-        <p className="text-neutral-400 mb-8 text-lg">You scored <span className="text-white font-bold">{score}</span> out of <span className="text-white font-bold">{questions.length}</span></p>
-        
-        <div className="flex flex-col items-center gap-4">
-           <div className="w-64 h-4 bg-neutral-800 rounded-full overflow-hidden">
-               <div 
-                 className="h-full bg-orange-500 transition-all duration-1000" 
-                 style={{ width: `${(score / questions.length) * 100}%` }} 
-               />
-           </div>
-           <span className="font-bold text-orange-500">{(score / questions.length * 100).toFixed(0)}% Mastery</span>
+      <div className="space-y-6">
+        <div ref={resultRef} className="text-center py-12 p-8 bg-neutral-900 rounded-3xl border border-neutral-800 shadow-2xl">
+          <Trophy size={80} className="text-yellow-500 mx-auto mb-6" />
+          <h2 className="text-4xl font-black mb-2">Quiz Complete!</h2>
+          <p className="text-neutral-400 mb-8 text-lg">You scored <span className="text-white font-bold">{score}</span> out of <span className="text-white font-bold">{questions.length}</span></p>
+          
+          <div className="flex flex-col items-center gap-4">
+             <div className="w-64 h-4 bg-neutral-800 rounded-full overflow-hidden">
+                 <div 
+                   className="h-full bg-orange-500 transition-all duration-1000" 
+                   style={{ width: `${(score / questions.length) * 100}%` }} 
+                 />
+             </div>
+             <span className="font-bold text-orange-500">{(score / questions.length * 100).toFixed(0)}% Mastery</span>
+          </div>
+
+          <div className="mt-12 flex flex-wrap gap-4 justify-center">
+            <button
+              onClick={() => { setQuestions([]); setShowResult(false); }}
+              className="px-8 py-4 bg-orange-500 text-white font-bold rounded-2xl flex items-center gap-3 hover:bg-orange-600 transition shadow-xl shadow-orange-500/20"
+            >
+              <RotateCcw size={20} />
+              Try Another Topic
+            </button>
+            
+            {userData?.discordWebhookUrl && (
+              <button
+                onClick={shareQuizToDiscord}
+                disabled={manualSharing}
+                className="px-8 py-4 bg-[#5865F2] text-white font-bold rounded-2xl flex items-center gap-3 hover:bg-[#4752c4] transition"
+              >
+                {manualSharing ? (
+                  <>
+                    <Loader2 size={20} className="animate-spin" />
+                    Archive Sharing...
+                  </>
+                ) : (
+                  <>
+                    <MessageSquare size={20} />
+                    Share Quiz PDF
+                  </>
+                )}
+              </button>
+            )}
+          </div>
         </div>
 
-        <button
-          onClick={() => { setQuestions([]); setShowResult(false); }}
-          className="mt-12 px-8 py-4 bg-orange-500 text-white font-bold rounded-2xl flex items-center gap-3 mx-auto hover:bg-orange-600 transition"
-        >
-          <RotateCcw size={20} />
-          Try Another Topic
-        </button>
+        {/* Hidden printable Quiz PDF element */}
+        <div className="printable-area absolute -left-[9999px] top-0 pointer-events-none" style={{ width: "800px" }}>
+          <div 
+            ref={quizPdfRef}
+            className="bg-white text-black p-12 rounded-[24px] text-left font-sans"
+            style={{ width: "800px" }}
+          >
+            <div className="mb-10 border-b-2 border-black pb-4">
+              <h4 className="text-sm font-black uppercase tracking-widest text-[#737373] mb-1">ScholarAI Board Prep Series</h4>
+              <h1 className="text-3xl font-black text-black">Interactive Quiz: {topic}</h1>
+              <p className="text-neutral-500 font-bold mt-2 font-sans">Subject: {subject} | Difficulty: {difficulty} | Score: {score} / {questions.length}</p>
+            </div>
+            
+            <div className="space-y-8 font-sans">
+              {questions.map((q, idx) => (
+                <div key={idx} className="border-b border-neutral-100 pb-6 last:border-0 text-black">
+                  <p className="font-bold text-lg mb-3">{idx + 1}. {q.question}</p>
+                  <div className="grid grid-cols-2 gap-2 pl-4 mb-3">
+                    {q.options.map((opt, oIdx) => (
+                      <div key={oIdx} className={cn(
+                        "p-2 border rounded-lg text-sm font-semibold",
+                        opt === q.correctAnswer ? "bg-green-50 text-green-800 border-green-200" : "bg-neutral-50 border-neutral-250 text-neutral-800"
+                      )}>
+                        {opt}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="bg-neutral-50 p-4 rounded-lg text-xs mt-2 pl-4 border-l-4 border-orange-500">
+                    <strong className="text-neutral-900">AI Explanation & Answer Key:</strong> {q.explanation}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       </div>
     );
   }

@@ -11,6 +11,7 @@ export default function Settings({ userData }: { userData: any }) {
   const [discordName, setDiscordName] = useState(userData?.discordName || "");
   const [discordUsername, setDiscordUsername] = useState(userData?.discordUsername || "");
   const [discordAvatar, setDiscordAvatar] = useState(userData?.discordAvatar || "");
+  const [discordWebhookUrl, setDiscordWebhookUrl] = useState(userData?.discordWebhookUrl || "");
   const [copied, setCopied] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [fixing, setFixing] = useState(false);
@@ -31,6 +32,7 @@ export default function Settings({ userData }: { userData: any }) {
       if (userData.discordName) setDiscordName(userData.discordName);
       if (userData.discordUsername) setDiscordUsername(userData.discordUsername);
       if (userData.discordAvatar) setDiscordAvatar(userData.discordAvatar);
+      if (userData.discordWebhookUrl) setDiscordWebhookUrl(userData.discordWebhookUrl);
     }
   }, [userData]);
 
@@ -99,7 +101,8 @@ export default function Settings({ userData }: { userData: any }) {
         nickname,
         discordName,
         discordUsername,
-        discordAvatar
+        discordAvatar,
+        discordWebhookUrl
       };
       await setDoc(userRef, updates, { merge: true });
       await setDoc(statsRef, { nickname, userId: userData.uid, lastUpdated: serverTimestamp() }, { merge: true });
@@ -365,10 +368,30 @@ export default function Settings({ userData }: { userData: any }) {
              <div className="w-10 h-10 rounded-xl bg-[#5865F2] flex items-center justify-center shadow-lg shadow-[#5865F2]/20">
                 <MessageSquare size={20} className="text-white" />
              </div>
-             Elite Discord Identity
+             Elite Discord Integration & Identity
           </h3>
           
           <div className="space-y-6 relative z-10">
+            <div className="flex items-center gap-4 text-[10px] font-black text-neutral-600 tracking-widest uppercase">
+               <div className="h-px flex-1 bg-neutral-800"></div>
+               Discord Webhook Configuration
+               <div className="h-px flex-1 bg-neutral-800"></div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-[10px] uppercase font-black text-neutral-500 tracking-widest pl-1">Discord Webhook URL</label>
+              <input 
+                type="password" 
+                value={discordWebhookUrl}
+                onChange={(e) => setDiscordWebhookUrl(e.target.value)}
+                placeholder="https://discord.com/api/webhooks/..."
+                className="w-full bg-black/40 border border-neutral-800 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-[#5865F2] transition-all font-mono text-xs text-[#5865F2]"
+              />
+              <p className="text-[10px] text-neutral-500 italic pl-1">
+                Your Webhook URL is stored securely in your private profile dataset.
+              </p>
+            </div>
+
             <div className="flex items-center gap-4 text-[10px] font-black text-neutral-600 tracking-widest uppercase">
                <div className="h-px flex-1 bg-neutral-800"></div>
                Manual Identity Overwrite
@@ -412,7 +435,7 @@ export default function Settings({ userData }: { userData: any }) {
               disabled={updating}
               className="w-full py-4 bg-[#5865F2] text-white font-black rounded-2xl flex items-center justify-center gap-3 hover:bg-[#4752c4] transition-all cursor-pointer font-sans"
             >
-              {updating ? <Loader2 className="animate-spin" size={20} /> : "Update Discord Identity"}
+              {updating ? <Loader2 className="animate-spin" size={20} /> : "Update Discord Settings"}
             </button>
           </div>
         </div>

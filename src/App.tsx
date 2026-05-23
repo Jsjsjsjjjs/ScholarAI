@@ -557,9 +557,9 @@ export default function App() {
             >
               <Suspense fallback={<ModuleLoader />}>
                 {activeTab === "dashboard" && <Dashboard userData={userData} user={user} />}
-                {activeTab === "guide" && <StudyGuide />}
-                {activeTab === "quiz" && <QuizSection />}
-                {activeTab === "pyq" && <ImportantQuestions />}
+                {activeTab === "guide" && <StudyGuide userData={userData} />}
+                {activeTab === "quiz" && <QuizSection userData={userData} />}
+                {activeTab === "pyq" && <ImportantQuestions userData={userData} />}
                 {activeTab === "duel" && <TicTacToe />}
                 {activeTab === "reminders" && <StudyReminders />}
                 {activeTab === "settings" && <Settings userData={userData} />}

@@ -20,6 +20,14 @@ export interface CachedQuiz {
 
 const NOTES_CACHE_KEY = "scholar_ai_notes_cache";
 const QUIZ_CACHE_KEY = "scholar_ai_quiz_cache";
+const FLASHCARD_CACHE_KEY = "scholar_ai_flashcard_cache";
+
+export interface CachedFlashcards {
+  subject: string;
+  topic: string;
+  flashcards: any[];
+  timestamp: number;
+}
 
 // Custom Hook to monitor network status in React components
 export function useOnlineStatus() {
@@ -149,3 +157,133 @@ export function getAllCachedQuizzes(): CachedQuiz[] {
     return [];
   }
 }
+
+export function saveFlashcardsToCache(subject: string, topic: string, flashcards: any[]) {
+  try {
+    const existingRaw = localStorage.getItem(FLASHCARD_CACHE_KEY);
+    const list: CachedFlashcards[] = existingRaw ? JSON.parse(existingRaw) : [];
+
+    const filtered = list.filter(item => 
+      !(item.subject.toLowerCase() === subject.toLowerCase() && 
+        item.topic.toLowerCase() === topic.toLowerCase())
+    );
+
+    const newItem: CachedFlashcards = {
+      subject,
+      topic,
+      flashcards,
+      timestamp: Date.now()
+    };
+
+    const updated = [newItem, ...filtered].slice(0, 15);
+    localStorage.setItem(FLASHCARD_CACHE_KEY, JSON.stringify(updated));
+  } catch (err) {
+    console.warn("Flashcard cache write failure:", err);
+  }
+}
+
+export function getFlashcardsFromCache(subject: string, topic: string): any[] | null {
+  try {
+    const existingRaw = localStorage.getItem(FLASHCARD_CACHE_KEY);
+    if (!existingRaw) return null;
+    const list: CachedFlashcards[] = JSON.parse(existingRaw);
+
+    const matched = list.find(item => 
+      item.subject.toLowerCase() === subject.toLowerCase() && 
+      item.topic.toLowerCase() === topic.toLowerCase()
+    );
+    return matched ? matched.flashcards : null;
+  } catch (err) {
+    console.warn("Flashcard cache read failure:", err);
+    return null;
+  }
+}
+
+export function getAllCachedFlashcards(): CachedFlashcards[] {
+  try {
+    const existingRaw = localStorage.getItem(FLASHCARD_CACHE_KEY);
+    return existingRaw ? JSON.parse(existingRaw) : [];
+  } catch {
+    return [];
+  }
+}
+
+// PPT and Test Cache keys
+const PPT_CACHE_KEY = "scholar_ai_ppt_cache";
+const TEST_CACHE_KEY = "scholar_ai_test_cache";
+
+export interface CachedPPT {
+  subject: string;
+  topic: string;
+  slides: any[];
+  timestamp: number;
+}
+
+export interface CachedTest {
+  subject: string;
+  topic: string;
+  questions: any[];
+  timestamp: number;
+}
+
+export function savePPTToCache(subject: string, topic: string, slides: any[]) {
+  try {
+    const existingRaw = localStorage.getItem(PPT_CACHE_KEY);
+    const list: CachedPPT[] = existingRaw ? JSON.parse(existingRaw) : [];
+    const filtered = list.filter(item => 
+      !(item.subject.toLowerCase() === subject.toLowerCase() && item.topic.toLowerCase() === topic.toLowerCase())
+    );
+    const newItem: CachedPPT = { subject, topic, slides, timestamp: Date.now() };
+    const updated = [newItem, ...filtered].slice(0, 15);
+    localStorage.setItem(PPT_CACHE_KEY, JSON.stringify(updated));
+  } catch (err) {
+    console.warn("PPT cache write failure:", err);
+  }
+}
+
+export function getPPTFromCache(subject: string, topic: string): any[] | null {
+  try {
+    const existingRaw = localStorage.getItem(PPT_CACHE_KEY);
+    if (!existingRaw) return null;
+    const list: CachedPPT[] = JSON.parse(existingRaw);
+    const matched = list.find(item => 
+      item.subject.toLowerCase() === subject.toLowerCase() && item.topic.toLowerCase() === topic.toLowerCase()
+    );
+    return matched ? matched.slides : null;
+  } catch (err) {
+    console.warn("PPT cache read failure:", err);
+    return null;
+  }
+}
+
+export function saveTestToCache(subject: string, topic: string, questions: any[]) {
+  try {
+    const existingRaw = localStorage.getItem(TEST_CACHE_KEY);
+    const list: CachedTest[] = existingRaw ? JSON.parse(existingRaw) : [];
+    const filtered = list.filter(item => 
+      !(item.subject.toLowerCase() === subject.toLowerCase() && item.topic.toLowerCase() === topic.toLowerCase())
+    );
+    const newItem: CachedTest = { subject, topic, questions, timestamp: Date.now() };
+    const updated = [newItem, ...filtered].slice(0, 15);
+    localStorage.setItem(TEST_CACHE_KEY, JSON.stringify(updated));
+  } catch (err) {
+    console.warn("Test cache write failure:", err);
+  }
+}
+
+export function getTestFromCache(subject: string, topic: string): any[] | null {
+  try {
+    const existingRaw = localStorage.getItem(TEST_CACHE_KEY);
+    if (!existingRaw) return null;
+    const list: CachedTest[] = JSON.parse(existingRaw);
+    const matched = list.find(item => 
+      item.subject.toLowerCase() === subject.toLowerCase() && item.topic.toLowerCase() === topic.toLowerCase()
+    );
+    return matched ? matched.questions : null;
+  } catch (err) {
+    console.warn("Test cache read failure:", err);
+    return null;
+  }
+}
+
+

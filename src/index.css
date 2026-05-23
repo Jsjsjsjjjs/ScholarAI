@@ -140,3 +140,22 @@
   scrollbar-width: none;
 }
 
+/* Custom 3D Card flip utilities */
+.perspective-1000 {
+  perspective: 1000px;
+}
+.preserve-3d {
+  transform-style: preserve-3d;
+}
+.backface-hidden {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+.rotate-y-180 {
+  transform: rotateY(180deg);
+}
+.ease-out-cubic {
+  transition-timing-function: cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+

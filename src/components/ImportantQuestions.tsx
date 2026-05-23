@@ -1,5 +1,6 @@
-import { useState } from "react";
-import { Star, Search, Loader2, Sparkles, Download, Printer } from "lucide-react";
+import { useState, useRef } from "react";
+import { Star, Search, Loader2, Sparkles, Download, Printer, MessageSquare } from "lucide-react";
+import { elementToPdfBlob, sendToDiscordWebhook } from "../lib/discord";
 import Markdown from "react-markdown";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
@@ -7,12 +8,14 @@ import { updateProgress, trackAIUsage } from "../lib/firebase";
 import { generateImportantQuestions } from "../lib/gemini";
 import { cn } from "../lib/utils";
 
-export default function ImportantQuestions() {
+export default function ImportantQuestions({ userData }: { userData?: any }) {
   const [topic, setTopic] = useState("");
   const [subject, setSubject] = useState("Science");
   const [numQuestions, setNumQuestions] = useState(10);
   const [loading, setLoading] = useState(false);
   const [content, setContent] = useState<string | null>(null);
+  const [sharing, setSharing] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
 
   const subjects = ["Hindi", "English", "Science", "Math", "SST"];
 
@@ -37,6 +40,46 @@ export default function ImportantQuestions() {
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const shareToDiscord = async () => {
+    if (!content || !userData?.discordWebhookUrl || sharing) return;
+    setSharing(true);
+    try {
+      const element = contentRef.current;
+      if (!element) return;
+      const pdfBlob = await elementToPdfBlob(element);
+      
+      const payload = {
+        embeds: [
+          {
+            title: "📝 Board Exam Important Questions Shared!",
+            description: `A selection of curated exam-critical high-probability questions on **${topic}** has been processed and archived.`,
+            color: 0x5865F2,
+            fields: [
+              { name: "Subject", value: subject, inline: true },
+              { name: "Topic", value: topic, inline: true },
+              { name: "Questions Count", value: String(numQuestions), inline: true }
+            ],
+            footer: {
+              text: `Archived by ${userData?.nickname || "Academic Elite"}`
+            },
+            timestamp: new Date().toISOString()
+          }
+        ]
+      };
+
+      await sendToDiscordWebhook({
+        webhookUrl: userData.discordWebhookUrl,
+        payload,
+        fileBlob: pdfBlob,
+        filename: `important_questions_${topic.replace(/\s+/g, '-').toLowerCase()}.pdf`
+      });
+    } catch (err) {
+      console.error("Shared to Discord error:", err);
+    } finally {
+      setSharing(false);
     }
   };
 
@@ -106,11 +149,30 @@ export default function ImportantQuestions() {
       </div>
 
       {content && (
-        <div className="bg-white text-black p-6 md:p-12 rounded-3xl shadow-2xl relative print:p-0 print:shadow-none print:rounded-none">
+        <div ref={contentRef} className="bg-white text-black p-6 md:p-12 rounded-3xl shadow-2xl relative print:p-0 print:shadow-none print:rounded-none">
           <div className="absolute top-8 right-8 flex gap-2">
              <button onClick={() => window.print()} className="p-2 bg-neutral-100 rounded-lg hover:bg-neutral-200 transition">
                <Printer size={20} />
              </button>
+             {userData?.discordWebhookUrl && (
+               <button 
+                 onClick={shareToDiscord} 
+                 disabled={sharing}
+                 className="flex items-center gap-1.5 px-3.5 py-2 bg-[#5865F2] hover:bg-[#4752c4] text-white text-xs font-black uppercase tracking-wider rounded-lg transition disabled:opacity-50"
+               >
+                 {sharing ? (
+                   <>
+                     <Loader2 size={12} className="animate-spin" />
+                     Sharing...
+                   </>
+                 ) : (
+                   <>
+                     <MessageSquare size={12} />
+                     Share
+                   </>
+                 )}
+               </button>
+             )}
           </div>
           
           <div className="mb-10 border-b-2 border-black pb-4">
