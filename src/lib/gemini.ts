@@ -1,9 +1,22 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
+const getEnvKey = () => {
+  if (typeof process !== 'undefined' && process.env) {
+    if (process.env.VITE_GEMINI_API_KEY) return process.env.VITE_GEMINI_API_KEY;
+    if (process.env.GEMINI_API_KEY) return process.env.GEMINI_API_KEY;
+  }
+  try {
+    // @ts-ignore
+    return import.meta.env.VITE_GEMINI_API_KEY;
+  } catch (e) {
+    return undefined;
+  }
+};
+
 // WARNING: Handling API keys client-side has security implications as keys are exposed to the browser.
 // This refactoring has been performed per explicit user request to support client-only deployments.
 const GEMINI_API_KEYS = [
-  import.meta.env.VITE_GEMINI_API_KEY,
+  getEnvKey(),
   "AIzaSyAf-esDwLLnA7HWxnsV4KcrYeUnR6U-tWY",
   "AIzaSyDphErkQ9t-F4TlGFE7oRfMlgb8ZjDVTFE",
   "AIzaSyCesj2DJTfExZY547raNaNxsy_uZAFjmwA",

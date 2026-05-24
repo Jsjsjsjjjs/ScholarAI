@@ -101,8 +101,12 @@ export default {
         try {
           const newEmbed = await getDashboardPayload();
           await message.edit({ embeds: [newEmbed] }); // Using standard message edit!
-        } catch (intervalErr) {
-          console.error("Dashboard update interval exception:", intervalErr);
+        } catch (intervalErr: any) {
+          if (intervalErr.code === 10008) { // Unknown Message
+            clearInterval(interval);
+          } else {
+            console.error("Dashboard update interval exception:", intervalErr);
+          }
         }
       }, 120 * 1000);
 
