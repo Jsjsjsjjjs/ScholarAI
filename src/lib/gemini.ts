@@ -2,8 +2,22 @@ import { GoogleGenAI, Type } from "@google/genai";
 
 // WARNING: Handling API keys client-side has security implications as keys are exposed to the browser.
 // This refactoring has been performed per explicit user request to support client-only deployments.
+const getEnvironmentKey = () => {
+  try {
+    if (typeof process !== "undefined" && process.env) {
+      return process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+    }
+  } catch (e) {}
+  try {
+    if (typeof import.meta !== "undefined" && (import.meta as any).env) {
+      return (import.meta as any).env.VITE_GEMINI_API_KEY;
+    }
+  } catch (e) {}
+  return undefined;
+};
+
 const GEMINI_API_KEYS = [
-  import.meta.env.VITE_GEMINI_API_KEY,
+  getEnvironmentKey(),
   "AIzaSyAf-esDwLLnA7HWxnsV4KcrYeUnR6U-tWY",
   "AIzaSyDphErkQ9t-F4TlGFE7oRfMlgb8ZjDVTFE",
   "AIzaSyCesj2DJTfExZY547raNaNxsy_uZAFjmwA",
