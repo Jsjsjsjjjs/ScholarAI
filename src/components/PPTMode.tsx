@@ -7,7 +7,7 @@ import rehypeKatex from "rehype-katex";
 import { motion, AnimatePresence } from "motion/react";
 import { useOnlineStatus } from "../lib/offlineCache";
 
-interface PPTSlide {
+export interface PPTSlide {
   title: string;
   bullets: string[];
   importantQuestion?: string;

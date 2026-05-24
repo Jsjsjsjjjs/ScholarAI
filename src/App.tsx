@@ -24,7 +24,8 @@ import {
   Sparkles,
   Loader2,
   Gamepad2,
-  Bell
+  Bell,
+  Terminal
 } from "lucide-react";
 
 import { cn } from "./lib/utils";
@@ -39,6 +40,7 @@ const Settings = lazy(() => import("./components/Settings"));
 const DoubtSolver = lazy(() => import("./components/DoubtSolver"));
 const TicTacToe = lazy(() => import("./components/TicTacToe"));
 const StudyReminders = lazy(() => import("./components/StudyReminders"));
+const DeveloperPage = lazy(() => import("./components/DeveloperPage"));
 
 const ModuleLoader = () => (
   <div className="w-full py-20 flex flex-col items-center justify-center gap-4">
@@ -411,6 +413,8 @@ export default function App() {
     }} />;
   }
 
+  const isDevUser = userData?.role === "owner" || userData?.role === "admin" || userData?.role === "developer" || userData?.email === "arunwarrior98789@gmail.com" || auth.currentUser?.email === "arunwarrior98789@gmail.com";
+
   const navItems = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
     { id: "guide", label: "Study Guide", icon: BookOpen },
@@ -419,6 +423,7 @@ export default function App() {
     { id: "duel", label: "AI Duel", icon: Gamepad2 },
     { id: "reminders", label: "Focus Pulse", icon: Bell },
     { id: "settings", label: "Settings", icon: SettingsIcon },
+    ...(isDevUser ? [{ id: "developer", label: "Developer", icon: Terminal }] : []),
   ];
 
   return (
@@ -563,6 +568,7 @@ export default function App() {
                 {activeTab === "duel" && <TicTacToe />}
                 {activeTab === "reminders" && <StudyReminders />}
                 {activeTab === "settings" && <Settings userData={userData} />}
+                {activeTab === "developer" && isDevUser && <DeveloperPage userData={userData} />}
               </Suspense>
             </motion.div>
           </AnimatePresence>
