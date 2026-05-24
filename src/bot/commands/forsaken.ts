@@ -19,9 +19,9 @@ export default {
     const { data: userData } = await fetchDocSafe("users", userId, 5000);
     const role = userData?.role || "user";
 
-    if (role !== "owner" && role !== "admin" && role !== "developer") {
+    if (role !== "owner") {
       return await interaction.editReply({
-        content: `❌ **Access Denied.** The \`/forsaken\` interface is a restricted console. (Current classification: \`${role}\`)`
+        content: `❌ **Access Denied.** The \`/forsaken\` interface is a strictly owner-only restricted console. (Current classification: \`${role}\`)`
       });
     }
 

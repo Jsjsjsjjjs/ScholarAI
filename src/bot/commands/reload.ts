@@ -14,10 +14,10 @@ export default {
     const { data: userData } = await fetchDocSafe("users", userId, 5000);
     const role = userData?.role || "user";
 
-    // Allow owner, admin, or developer role to reload engine
-    if (role !== "owner" && role !== "admin" && role !== "developer") {
+    // Allow strictly owner to reload engine
+    if (role !== "owner") {
       return await interaction.editReply({
-        content: `❌ **Access Denied.** The \`/reload\` engine reboot command is reserved for Super Owners & Lead Developers only. (Your rank: \`${role}\`)`
+        content: `❌ **Access Denied.** The \`/reload\` engine reboot command is reserved for Super Owners only. (Your rank: \`${role}\`)`
       });
     }
 
