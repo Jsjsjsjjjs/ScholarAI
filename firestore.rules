@@ -6,21 +6,18 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    // Users and subcollections (doubts, progress, reminders)
+    // Users and subcollections (doubts, progress, reminders, assets, etc.)
     match /users/{userId} {
       allow read, write: if true;
 
-      match /doubts/{doubtId} {
+      match /{document=**} {
         allow read, write: if true;
       }
+    }
 
-      match /progress/{topicId} {
-        allow read, write: if true;
-      }
-
-      match /reminders/{reminderId} {
-        allow read, write: if true;
-      }
+    // Discord link mappings
+    match /discord_links/{linkId} {
+      allow read, write: if true;
     }
 
     // Stats collection (user stats and leaderboard logs)

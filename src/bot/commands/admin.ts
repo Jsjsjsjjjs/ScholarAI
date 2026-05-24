@@ -101,16 +101,23 @@ export default {
       if (group === "config") {
         if (command === "maintenance") {
           const state = interaction.options.getBoolean("enabled", true);
-          // Force read connection
-          await db.collection("system").doc("config").get();
-          await db.collection("system").doc("config").set({ maintenanceMode: state }, { merge: true });
+          const configSnap = await db.collection("system").doc("config").get();
+          if (!configSnap.exists) {
+            await db.collection("system").doc("config").set({ maintenanceMode: state, logoUrl: "" });
+          } else {
+            await db.collection("system").doc("config").set({ maintenanceMode: state }, { merge: true });
+          }
           return await interaction.editReply({ content: `✅ Subsystem configured: **Maintenance Mode** is now \`${state ? "ON" : "OFF"}\`.` });
         }
         
         if (command === "logo") {
           const url = interaction.options.getString("url", true);
-          await db.collection("system").doc("config").get();
-          await db.collection("system").doc("config").set({ logoUrl: url }, { merge: true });
+          const configSnap = await db.collection("system").doc("config").get();
+          if (!configSnap.exists) {
+            await db.collection("system").doc("config").set({ maintenanceMode: false, logoUrl: url });
+          } else {
+            await db.collection("system").doc("config").set({ logoUrl: url }, { merge: true });
+          }
           return await interaction.editReply({ content: `✅ Brand updated: **System Logo URL** changed to \n${url}` });
         }
       }
@@ -120,21 +127,44 @@ export default {
         
         if (command === "setplan") {
           const plan = interaction.options.getString("plan", true);
-          await db.collection("users").doc(targetUid).get();
-          await db.collection("users").doc(targetUid).set({ plan }, { merge: true });
+          const userSnap = await db.collection("users").doc(targetUid).get();
+          if (!userSnap.exists) {
+            await db.collection("users").doc(targetUid).set({ 
+              uid: targetUid,
+              plan,
+              totalTokens: 50000,
+              aiRequests: 0,
+              role: "user",
+              nickname: "Class of 2026 User",
+              joinedAt: new Date().toISOString()
+            });
+          } else {
+            await db.collection("users").doc(targetUid).set({ plan }, { merge: true });
+          }
           return await interaction.editReply({ content: `✅ Updated user \`${targetUid}\` plan tier to **${plan.toUpperCase()}**.` });
         }
 
         if (command === "tokens") {
           const amount = interaction.options.getInteger("amount", true);
-          await db.collection("users").doc(targetUid).get();
-          await db.collection("users").doc(targetUid).set({ totalTokens: amount }, { merge: true });
+          const userSnap = await db.collection("users").doc(targetUid).get();
+          if (!userSnap.exists) {
+            await db.collection("users").doc(targetUid).set({ 
+              uid: targetUid,
+              plan: "free",
+              totalTokens: amount,
+              aiRequests: 0,
+              role: "user",
+              nickname: "Class of 2026 User",
+              joinedAt: new Date().toISOString()
+            });
+          } else {
+            await db.collection("users").doc(targetUid).set({ totalTokens: amount }, { merge: true });
+          }
           return await interaction.editReply({ content: `✅ Overwritten token balance for user \`${targetUid}\` to **${amount} tokens**.` });
         }
 
         if (command === "kick") {
           // Cascade delete
-          await db.collection("users").doc(targetUid).get();
           await db.collection("users").doc(targetUid).delete();
           await db.collection("stats").doc(targetUid).delete();
           return await interaction.editReply({ content: `🚨 WARNING EXECUTED: User \`${targetUid}\` and primary stats have been purged from database.` });
