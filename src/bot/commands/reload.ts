@@ -11,11 +11,7 @@ export default {
     const userId = interaction.user.id;
 
     // 1. Fetch user permissions via Firestore
-    let { data: userData } = await fetchDocSafe("users", userId, 5000);
-    if (!userData && interaction.user.username) {
-      const fallbackResult = await fetchDocSafe("users", interaction.user.username, 5000);
-      userData = fallbackResult.data;
-    }
+    const { data: userData } = await fetchDocSafe("users", userId, 5000);
     const role = userData?.role || "user";
 
     // Allow owner, admin, or developer role to reload engine

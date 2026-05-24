@@ -1,149 +1,73 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
-const getEnvKey = () => {
-  if (typeof process !== 'undefined' && process.env) {
-    if (process.env.VITE_GEMINI_API_KEY) return process.env.VITE_GEMINI_API_KEY;
-    if (process.env.GEMINI_API_KEY) return process.env.GEMINI_API_KEY;
-  }
+// WARNING: Handling API keys client-side has security implications as keys are exposed to the browser.
+// This refactoring has been performed per explicit user request to support client-only deployments.
+const getEnvironmentKey = () => {
   try {
-    // @ts-ignore
-    return import.meta.env.VITE_GEMINI_API_KEY;
-  } catch (e) {
-    return undefined;
-  }
+    if (typeof process !== "undefined" && process.env) {
+      return process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+    }
+  } catch (e) {}
+  try {
+    if (typeof import.meta !== "undefined" && (import.meta as any).env) {
+      return (import.meta as any).env.VITE_GEMINI_API_KEY;
+    }
+  } catch (e) {}
+  return undefined;
 };
 
-const getKeysPool = (): string[] => {
-  const keys: string[] = [];
-  
-  // 1. Try process.env.GEMINI_API_KEYS
-  if (typeof process !== 'undefined' && process.env && process.env.GEMINI_API_KEYS) {
-    const rawKeys = process.env.GEMINI_API_KEYS.trim();
-    if (rawKeys.startsWith('[') && rawKeys.endsWith(']')) {
-      try {
-        const parsed = JSON.parse(rawKeys);
-        if (Array.isArray(parsed)) {
-          keys.push(...parsed.map(k => String(k).trim()).filter(Boolean));
+const GEMINI_API_KEYS = [
+  getEnvironmentKey(),
+  "AIzaSyAf-esDwLLnA7HWxnsV4KcrYeUnR6U-tWY",
+  "AIzaSyDphErkQ9t-F4TlGFE7oRfMlgb8ZjDVTFE",
+  "AIzaSyCesj2DJTfExZY547raNaNxsy_uZAFjmwA",
+  "AIzaSyCis_Ha5eU3liuGwH5RXbOzou5iAEJ0D5c"
+].filter(Boolean) as string[];
+
+let currentKeyIndex = 0;
+let _aiInstance: GoogleGenAI | null = null;
+
+function getAI() {
+  if (!_aiInstance) {
+    const apiKey = GEMINI_API_KEYS[currentKeyIndex] || "AIzaSyAf-esDwLLnA7HWxnsV4KcrYeUnR6U-tWY";
+    _aiInstance = new GoogleGenAI({
+      apiKey: apiKey,
+      httpOptions: {
+        headers: {
+          'User-Agent': "aistudio-build",
         }
-      } catch (e) {
-        keys.push(...rawKeys.split(',').map(k => k.trim()).filter(Boolean));
       }
-    } else if (rawKeys.includes(',')) {
-      keys.push(...rawKeys.split(',').map(k => k.trim()).filter(Boolean));
-    } else if (rawKeys) {
-      keys.push(rawKeys);
-    }
-  }
-
-  // 2. Individual env keys
-  const envKey = getEnvKey();
-  if (envKey && !keys.includes(envKey)) {
-    keys.push(envKey);
-  }
-
-  // 3. Fallback hardcoded backup rotation pool
-  const backups = [
-    "AIzaSyAf-esDwLLnA7HWxnsV4KcrYeUnR6U-tWY",
-    "AIzaSyDphErkQ9t-F4TlGFE7oRfMlgb8ZjDVTFE",
-    "AIzaSyCesj2DJTfExZY547raNaNxsy_uZAFjmwA",
-    "AIzaSyCis_Ha5eU3liuGwH5RXbOzou5iAEJ0D5c"
-  ];
-  for (const b of backups) {
-    if (!keys.includes(b)) {
-      keys.push(b);
-    }
-  }
-
-  return keys.filter(Boolean);
-};
-
-// Create the GeminiFailoverService class as requested
-export class GeminiFailoverService {
-  private keys: string[];
-  private currentKeyIndex: number = 0;
-  private instances: Map<string, GoogleGenAI> = new Map();
-
-  constructor() {
-    this.keys = getKeysPool();
-  }
-
-  private getClient(key: string): GoogleGenAI {
-    let client = this.instances.get(key);
-    if (!client) {
-      client = new GoogleGenAI({
-        apiKey: key,
-        httpOptions: {
-          headers: {
-            'User-Agent': "aistudio-build",
-          }
-        }
-      });
-      this.instances.set(key, client);
-    }
-    return client;
-  }
-
-  // Main wrapper method to execute the chained relay loop
-  public async executeWithFailover<T>(fn: (client: GoogleGenAI) => Promise<T>): Promise<T> {
-    const startIndex = this.currentKeyIndex;
-    let attempts = 0;
-    const totalKeys = this.keys.length;
-
-    while (attempts < totalKeys) {
-      const index = (startIndex + attempts) % totalKeys;
-      const key = this.keys[index];
-      
-      try {
-        const client = this.getClient(key);
-        const result = await fn(client);
-        // Save state: On success, preserve this key as the active core
-        this.currentKeyIndex = index;
-        return result;
-      } catch (err: any) {
-        console.warn(`API Key #${index} failed, switching to next key... Error:`, err.message || err);
-        attempts++;
-      }
-    }
-
-    throw new Error("All API keys exhausted. Generation failed.");
-  }
-
-  // Standard generate(prompt) method as requested by the user
-  public async generate(prompt: string): Promise<string> {
-    return this.executeWithFailover(async (client) => {
-      const response = await client.models.generateContent({
-        model: "gemini-1.5-flash",
-        contents: prompt
-      });
-      return response.text || "";
     });
   }
+  return _aiInstance;
 }
 
-// Instantiate and export the global singleton service
-export const failoverService = new GeminiFailoverService();
-
-// Re-map withFailover to go through the failoverService
+// Global failover wrapper to automatically handle key rotation and retry upon API errors
 async function withFailover<T>(fn: (client: GoogleGenAI) => Promise<T>): Promise<T> {
-  return failoverService.executeWithFailover(fn);
+  let attempt = 0;
+  const maxAttempts = Math.max(4, GEMINI_API_KEYS.length * 2);
+
+  while (attempt < maxAttempts) {
+    try {
+      const client = getAI();
+      const res = await fn(client);
+      return res;
+    } catch (err: any) {
+      console.warn(`Gemini failover triggered: attempt ${attempt + 1}/${maxAttempts} failed using key index ${currentKeyIndex}. Error:`, err);
+      currentKeyIndex = (currentKeyIndex + 1) % GEMINI_API_KEYS.length;
+      _aiInstance = null; // reset to force reinitialization with the next key
+      attempt++;
+      if (attempt >= maxAttempts) {
+        throw err;
+      }
+    }
+  }
+  throw new Error("All pre-configured API keys have been exhausted.");
 }
 
-// Maintain compatibility for components referencing "ai.models"
 export const ai = {
   get models() {
-    return new Proxy({}, {
-      get(target, prop) {
-        return (...args: any[]) => {
-          return failoverService.executeWithFailover(async (client) => {
-            const modelsObj: any = client.models;
-            if (typeof modelsObj[prop] === 'function') {
-              return modelsObj[prop](...args);
-            }
-            throw new Error(`Method ${String(prop)} not found on client.models`);
-          });
-        };
-      }
-    }) as any;
+    return getAI().models;
   }
 };
 

@@ -36,11 +36,6 @@ export class ClientDocumentReference {
     await fsSetDoc(dRef, data, options || {});
   }
 
-  async update(data: any) {
-    const dRef = fsDoc(this.db, this.colPath, this.docId);
-    await fsSetDoc(dRef, data, { merge: true });
-  }
-
   async delete() {
     const dRef = fsDoc(this.db, this.colPath, this.docId);
     await fsDeleteDoc(dRef);
@@ -192,71 +187,29 @@ export async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, ope
 export async function fetchDocSafe(collectionPath: string, docId: string, timeoutMs: number = 5000) {
   try {
     const db = getDb();
-
-    // Check discord_links mapping first
-    let explicitUid = null;
-    if (collectionPath === "users" && /^\d{17,20}$/.test(docId)) {
-      try {
-        const linkSnap = await withTimeout(db.collection("discord_links").doc(docId).get(), timeoutMs, `Firestore GET discord_links/${docId}`) as any;
-        if (linkSnap.exists) {
-          explicitUid = linkSnap.data().scholarId;
-        }
-      } catch (e) {
-        console.warn(`[fetchDocSafe] Could not fetch discord link for ${docId}:`, e);
-      }
-    }
-
-    const finalUID = explicitUid || docId;
-    const docRef = db.collection(collectionPath).doc(finalUID);
-    const snap = (await withTimeout(docRef.get(), timeoutMs, `Firestore GET ${collectionPath}/${finalUID}`)) as any;
+    const docRef = db.collection(collectionPath).doc(docId);
+    const snap = (await withTimeout(docRef.get(), timeoutMs, `Firestore GET ${collectionPath}/${docId}`)) as any;
     
     if (snap.exists) {
-      const data = snap.data();
-      if (collectionPath === "users" && docId === "1231538210140721183") {
-        data.role = "owner";
-      }
-      return { data: { ...data, uid: snap.id }, exists: true, error: null };
+      return { data: snap.data(), exists: true, error: null };
     }
 
     // Special fallback resolving for Discord Bot logins and permissions checking
     if (collectionPath === "users") {
-      let mainProfileId = "8urQsWaHwmNJAyGrG6SCAo1CDmF2"; // default old UID
+      // 1. Hardcoded Owner/Lead Developer bypass check first so it can't be hijacked by duplicate usernames/IDs
+      if (docId === "pacifictheog" || docId === "1231538210140721183" || docId === "8urQsWaHwmNJAyGrG6SCAo1CDmF2") {
+        const ownerSnap = await db.collection("users").doc("8urQsWaHwmNJAyGrG6SCAo1CDmF2").get();
+        if (ownerSnap.exists) {
+          console.log(`[Firestore Match Builder] Bypassed matching; explicitly resolved lead developer:`, ownerSnap.id);
+          return { data: { ...ownerSnap.data(), uid: ownerSnap.id }, exists: true, error: null };
+        }
+      }
+
       const usersSnap = (await withTimeout(
         db.collection("users").get(),
         timeoutMs,
         "Firestore LIST users fallback"
       )) as any;
-
-      if (usersSnap && usersSnap.docs) {
-         for (const d of usersSnap.docs) {
-             if (d.data().email === "arunwarrior98789@gmail.com") {
-                 mainProfileId = d.id;
-                 break;
-             }
-         }
-      }
-
-      // Hardcoded Owner/Lead Developer bypass check first so it can't be hijacked by duplicate usernames/IDs
-      if (docId === "pacifictheog" || docId === "1231538210140721183" || docId === mainProfileId) {
-        const ownerSnap = await db.collection("users").doc(mainProfileId).get();
-        if (ownerSnap.exists) {
-          console.log(`[Firestore Match Builder] Bypassed matching; explicitly resolved lead developer:`, ownerSnap.id);
-          const ownerData = ownerSnap.data();
-          if (docId === "1231538210140721183") ownerData.role = "owner";
-          return { data: { ...ownerData, uid: ownerSnap.id }, exists: true, error: null };
-        }
-      }
-
-      // If they passed a valid discord numeric ID but no link was found, default to main profile
-      if (/^\d{17,20}$/.test(docId)) {
-        const ownerSnap = await db.collection("users").doc(mainProfileId).get();
-        if (ownerSnap.exists) {
-           console.log(`[Firestore Match Builder] Defaulting to main profile for unlinked Discord ID: ${docId}`);
-           const data = ownerSnap.data();
-           if (docId === "1231538210140721183") data.role = "owner";
-           return { data: { ...data, uid: ownerSnap.id }, exists: true, error: null };
-        }
-      }
 
       let matchedUserDoc: any = null;
 
@@ -301,7 +254,6 @@ export async function fetchDocSafe(collectionPath: string, docId: string, timeou
       });
 
       if (matchedUserDoc) {
-        if (docId === "1231538210140721183") matchedUserDoc.role = "owner";
         console.log(`[Firestore Match Builder] Resolved Discord ID/Username ${docId} to database record:`, matchedUserDoc.email || matchedUserDoc.uid, `(Role: ${matchedUserDoc.role || "user"})`);
         return { data: matchedUserDoc, exists: true, error: null };
       }

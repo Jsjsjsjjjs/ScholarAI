@@ -30,11 +30,6 @@ export default function ImportantQuestions({ userData }: { userData?: any }) {
 
       setContent(notesContent);
       updateProgress(subject, topic, "pyqsViewed");
-
-      // Save to Firestore so the bots and user library have access to it
-      import("../lib/firebase").then(({ saveGeneratedAsset }) => {
-        saveGeneratedAsset(`${topic} - Important Questions`, 'pyqs', notesContent).catch(console.error);
-      }).catch(err => console.error(err));
     } catch (err: any) {
       console.error(err);
       if (err.status === 429 || err.message?.includes("429")) {

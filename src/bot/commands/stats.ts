@@ -11,12 +11,7 @@ export default {
 
     // 2. Fetch data using our robust connection client with a 5-second timeout.
     const userId = interaction.user.id;
-    let { data: userData, exists, error } = await fetchDocSafe('users', userId, 5000);
-    if (!userData && interaction.user.username) {
-      const fallbackResult = await fetchDocSafe('users', interaction.user.username, 5000);
-      userData = fallbackResult.data;
-      exists = fallbackResult.exists;
-    }
+    const { data: userData, exists, error } = await fetchDocSafe('users', userId, 5000);
 
     // 3. Handle connection timeouts or Firestore logic rejections
     if (error) {
@@ -36,17 +31,7 @@ export default {
     // 5. Successful response mapping
     const totalRequests = userData.aiRequests || 0;
     const totalTokens = userData.totalTokens || 0;
-    
-    let lastActive = 'Unknown';
-    if (userData.lastAIActivity) {
-      if (typeof userData.lastAIActivity.toDate === 'function') {
-        lastActive = userData.lastAIActivity.toDate().toLocaleString();
-      } else if (typeof userData.lastAIActivity === 'string') {
-        lastActive = new Date(userData.lastAIActivity).toLocaleString();
-      } else {
-        lastActive = String(userData.lastAIActivity);
-      }
-    }
+    const lastActive = userData.lastAIActivity?.toDate()?.toLocaleString() || 'Unknown';
 
     await interaction.editReply({
       content: `📊 **Your AI Statistics:**\n\n- **Total Requests:** ${totalRequests}\n- **Tokens Consumed:** ${totalTokens}\n- **Last Used:** ${lastActive}`

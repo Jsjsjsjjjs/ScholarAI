@@ -16,11 +16,7 @@ export default {
     const instruction = interaction.options.getString("instruction", true);
 
     // 1. RBAC authorization check
-    let { data: userData } = await fetchDocSafe("users", userId, 5000);
-    if (!userData && interaction.user.username) {
-      const fallbackResult = await fetchDocSafe("users", interaction.user.username, 5000);
-      userData = fallbackResult.data;
-    }
+    const { data: userData } = await fetchDocSafe("users", userId, 5000);
     const role = userData?.role || "user";
 
     if (role !== "owner" && role !== "admin" && role !== "developer") {
@@ -111,7 +107,7 @@ Format your responses beautifully in professional Markdown. Keep them compact, a
 `;
 
       const response = await ai.models.generateContent({
-        model: "gemini-1.5-flash",
+        model: "gemini-3.5-flash",
         contents: instruction,
         config: {
           systemInstruction,

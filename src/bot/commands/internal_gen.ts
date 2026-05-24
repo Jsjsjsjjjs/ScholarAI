@@ -1,11 +1,18 @@
-import { safeReply, safeDefer } from '../utils/responses.js';
-import { SlashCommandBuilder, EmbedBuilder, AttachmentBuilder } from 'discord.js';
-import { getDb, fetchDocSafe } from '../utils/firestore.js';
+import { safeReply } from '../utils/responses.js';
+import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
+import { getDb } from '../utils/firestore.js';
+import { 
+  generateNotes, 
+  generateFlashcards, 
+  generateQuiz, 
+  generatePracticeTest, 
+  generateImportantQuestions 
+} from '../../lib/gemini.js';
 
 export default {
   data: new SlashCommandBuilder()
     .setName('internal_gen')
-    .setDescription('⚡ Fetch previously generated Class 10th CBSE educational assets from your profile')
+    .setDescription('⚡ Generate professional Class 10th CBSE educational assets instantly using Gemini')
     .addStringOption(option =>
       option.setName('subject')
         .setDescription('Select the subject')
@@ -41,68 +48,117 @@ export default {
     const assetType = interaction.options.getString('asset_type')!;
     const userId = interaction.user.id;
 
-    // Immediately defer the reply to prevent Discord interaction timing out (3 second gateway limit)
-    await safeDefer(interaction, false);
-
     try {
-      console.log(`[Internal Gen] Requested fetch for: ${assetType} by User: ${userId}`);
+      console.log(`[Internal Gen] Requested: ${assetType} for Subject: ${subject}, Topic: ${topic} by User: ${userId}`);
 
-      const db = getDb();
-      const { data: matchedUser, exists: userExists } = await fetchDocSafe('users', userId, 5000);
-      const actualUid = matchedUser ? (matchedUser.uid || matchedUser.id || userId) : userId;
+      let contentStr = '';
+      let embedTitle = '';
+      let responseEmbeds: EmbedBuilder[] = [];
 
-      if (!userExists) {
-         return await safeReply(interaction, { content: '❌ Platform Profile not found. Please link your account or generate content first.' });
+      if (assetType === 'notes') {
+        embedTitle = `📄 CBSE CLASS 10TH ${subject.toUpperCase()} NOTES: ${topic.toUpperCase()}`;
+        contentStr = await generateNotes(subject, topic, 'one-page');
+      } else if (assetType === 'flashcards') {
+        embedTitle = `⚡ SCHOLAR-AI FLASHCARDS: ${topic.toUpperCase()}`;
+        const cards = await generateFlashcards(subject, topic, null);
+        contentStr = cards && cards.length > 0 
+          ? cards.map((c: any, index: number) => `**Card ${index + 1}** [${c.category}]\n**Q:** ${c.front}\n**A:** ${c.back}\n`).join('\n')
+          : 'No flashcards could be parsed.';
+      } else if (assetType === 'quiz') {
+        embedTitle = `📝 PRACTICE MCQS: ${topic.toUpperCase()} (${subject})`;
+        const quizItems = await generateQuiz(subject, topic, 3, 'Medium');
+        contentStr = quizItems && quizItems.length > 0
+          ? quizItems.map((q: any, i: number) => `**Q${i+1}:** ${q.question}\nOptions:\n${q.options.map((opt: string, idx: number) => ` ${String.fromCharCode(65 + idx)}) ${opt}`).join('\n')}\n*Correct Answer: ${q.correctAnswer}*\n*Solution:* ${q.explanation}\n`).join('\n')
+          : 'No quiz items could be parsed.';
+      } else if (assetType === 'practice_test') {
+        embedTitle = `🏆 PRE-BOARD REVISION CHAPTER EXAM: ${topic.toUpperCase()}`;
+        const practice = await generatePracticeTest(subject, topic, null);
+        contentStr = practice && practice.length > 0
+          ? practice.map((p: any) => `**Question ${p.id}** [${p.type.toUpperCase()}]\n**Q:** ${p.questionText}\n${p.options ? `Options:\n${p.options.map((opt: string, idx: number) => ` ${String.fromCharCode(65 + idx)}) ${opt}`).join('\n')}` : ''}\n*Answers scoring criteria:* ${p.correctOption}\n*Detailed evaluation instructions:* ${p.detailedSolution}\n`).join('\n')
+          : 'No board-exam practice questions generated.';
+      } else {
+        embedTitle = `💥 PYQS & IMPORTANT SCHOLAR QUESTIONS: ${topic.toUpperCase()}`;
+        contentStr = await generateImportantQuestions(subject, topic, 3);
       }
 
-      const assetsSnap = await db.collection('users').doc(actualUid).collection('assets')
-                                 .where('type', '==', assetType)
-                                 .orderBy('createdAt', 'desc')
-                                 .limit(10)
-                                 .get();
-
-      let targetAsset = null;
-      if (!assetsSnap.empty) {
-         // Attempt topic match if topic provided, otherwise grab latest.
-         for (const doc of assetsSnap.docs) {
-            const data = doc.data();
-            if (data.title && data.title.toLowerCase().includes(topic.toLowerCase())) {
-                targetAsset = data;
-                break;
-            }
-         }
-         if (!targetAsset) targetAsset = assetsSnap.docs[0].data();
-      }
-
-      if (!targetAsset || !targetAsset.rawData) {
-        return await safeReply(interaction, {
-          content: `❌ Could not find previously generated content for type **${assetType.toUpperCase()}**. Please generate it on the ScholarAI platform first.`
-        });
-      }
-
-      let contentStr = targetAsset.rawData;
-      let embedTitle = targetAsset.title || `ScholarAI Document: ${topic}`;
-
-      // 3. Format text length for the PDF Generation
+      // 3. Split content to embeds safely (Discord limit: 4096 characters per embed)
       const formattedLaTex = contentStr.replace(/\\\[|\\\]|\\\(|\\\)/g, '$'); // uniform LaTeX
-      
-      const { generateTextPdf } = await import('../utils/pdfGenerator.js');
-      const pdfBuffer = await generateTextPdf(embedTitle, formattedLaTex);
-      const filename = `${assetType}_${topic.toLowerCase().replace(/[^a-z0-9]/g, '_')}.pdf`;
-      const files = [new AttachmentBuilder(pdfBuffer, { name: filename })];
-      
-      const responseEmbeds = [
+      const paragraphs = formattedLaTex.split('\n');
+      let currentDesc = '';
+
+      for (let i = 0; i < paragraphs.length; i++) {
+        const p = paragraphs[i];
+        if ((currentDesc.length + p.length + 2) < 3800) {
+          currentDesc += p + '\n';
+        } else {
+          responseEmbeds.push(
+            new EmbedBuilder()
+              .setTitle(responseEmbeds.length === 0 ? embedTitle : `${embedTitle} (Continued)`)
+              .setColor(0x34D399) // Clean Emerald color
+              .setDescription(currentDesc || 'Generating educational logs...')
+          );
+          currentDesc = p + '\n';
+        }
+      }
+
+      if (currentDesc) {
+        responseEmbeds.push(
           new EmbedBuilder()
-            .setTitle(`✅ Generated PDF: ${embedTitle}`)
+            .setTitle(responseEmbeds.length === 0 ? embedTitle : `${embedTitle} (Continued)`)
             .setColor(0x34D399)
-            .setDescription(`Your requested document has been fetched from your profile and compiled into a PDF.`)
-            .setFooter({ text: `ScholarAI CBSE Dashboard • Profile: ${matchedUser.email || actualUid}` })
-      ];
+            .setDescription(currentDesc)
+            .setFooter({ text: `ScholarAI CBSE Dashboard • Requested by ${interaction.user.username}` })
+        );
+      }
+
+      // 4. Save progress update to database as requested to keep Bot & Platform connected
+      try {
+        const db = getDb();
+        const userRef = db.collection('users').doc(userId);
+        
+        // Ensure user exists, if not construct basic profile
+        const userSnap = await userRef.get();
+        if (!userSnap.exists) {
+          await userRef.set({
+            uid: userId,
+            nickname: interaction.user.username,
+            discordName: interaction.user.tag,
+            discordUsername: interaction.user.username,
+            discordAvatar: interaction.user.displayAvatarURL(),
+            joinedAt: new Date().toISOString(),
+            colorMode: 'dark',
+            role: 'scholar',
+            aiRequests: 1,
+            totalTokens: 1500,
+            lastAIActivity: new Date().toISOString()
+          });
+        } else {
+          await userRef.update({
+            aiRequests: (userSnap.data().aiRequests || 0) + 1,
+            lastAIActivity: new Date().toISOString()
+          });
+        }
+
+        // Save progress topic trace
+        const topicSlug = topic.toLowerCase().replace(/[^a-z0-9]/g, '-');
+        const progressRef = userRef.collection('progress').doc(topicSlug);
+        await progressRef.set({
+          subject: subject,
+          topic: topic,
+          notesRead: assetType === 'notes',
+          quizTaken: assetType === 'quiz',
+          pyqsViewed: assetType === 'pyqs',
+          lastActivity: new Date().toISOString()
+        }, { merge: true });
+
+        console.log(`[Firestore DB Sync] User progress log for ${topic} synchronized flawlessly.`);
+      } catch (dbErr: any) {
+        console.error('[Internal Gen DB Error] Firestore connection/write warning:', dbErr.message);
+      }
 
       // Reply with generated elements
       await safeReply(interaction, {
-        embeds: responseEmbeds,
-        files: files
+        embeds: responseEmbeds.slice(0, 5)
       });
 
     } catch (err: any) {

@@ -10,11 +10,7 @@ export default {
     const userId = interaction.user.id;
 
     // Check roles
-    let { data: userData } = await fetchDocSafe("users", userId, 5000);
-    if (!userData && interaction.user.username) {
-      const fallbackResult = await fetchDocSafe("users", interaction.user.username, 5000);
-      userData = fallbackResult.data;
-    }
+    const { data: userData } = await fetchDocSafe("users", userId, 5000);
     const role = userData?.role || "user";
     
     if (role !== "owner" && role !== "admin" && role !== "developer") {
@@ -105,12 +101,8 @@ export default {
         try {
           const newEmbed = await getDashboardPayload();
           await message.edit({ embeds: [newEmbed] }); // Using standard message edit!
-        } catch (intervalErr: any) {
-          if (intervalErr.code === 10008) { // Unknown Message
-            clearInterval(interval);
-          } else {
-            console.error("Dashboard update interval exception:", intervalErr);
-          }
+        } catch (intervalErr) {
+          console.error("Dashboard update interval exception:", intervalErr);
         }
       }, 120 * 1000);
 

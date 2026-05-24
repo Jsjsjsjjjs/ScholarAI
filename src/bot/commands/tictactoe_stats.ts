@@ -1,6 +1,6 @@
 import { safeReply } from '../utils/responses.js';
 import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
-import { getDb, fetchDocSafe } from '../utils/firestore.js';
+import { getDb } from '../utils/firestore.js';
 
 export default {
   data: new SlashCommandBuilder()
@@ -17,9 +17,12 @@ export default {
 
     try {
       console.log(`[TicTacToe Stats] Fetching game stats for: ${userId}`);
-      const { data, exists } = await fetchDocSafe('users', userId, 5000);
+      const db = getDb();
+      const docRef = db.collection('users').doc(userId);
+      const userSnap = await docRef.get();
 
-      if (exists && data) {
+      if (userSnap.exists) {
+        const data = userSnap.data();
         wins = data.tttWins ?? Math.floor(Math.random() * 8); // seed some initial data for visual richness if zero
         losses = data.tttLosses ?? Math.floor(Math.random() * 5);
         ties = data.tttTies ?? Math.floor(Math.random() * 4);
