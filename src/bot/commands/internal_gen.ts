@@ -1,4 +1,4 @@
-import { safeReply } from '../utils/responses.js';
+import { safeReply, safeDefer } from '../utils/responses.js';
 import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { getDb } from '../utils/firestore.js';
 import { 
@@ -47,6 +47,9 @@ export default {
     const topic = interaction.options.getString('topic')!;
     const assetType = interaction.options.getString('asset_type')!;
     const userId = interaction.user.id;
+
+    // Immediately defer the reply to prevent Discord interaction timing out (3 second gateway limit)
+    await safeDefer(interaction, false);
 
     try {
       console.log(`[Internal Gen] Requested: ${assetType} for Subject: ${subject}, Topic: ${topic} by User: ${userId}`);

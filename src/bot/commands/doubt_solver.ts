@@ -1,4 +1,4 @@
-import { safeReply } from '../utils/responses.js';
+import { safeReply, safeDefer } from '../utils/responses.js';
 import { SlashCommandBuilder, EmbedBuilder, Attachment, AttachmentBuilder, MessageFlags } from 'discord.js';
 import { solveDoubt } from '../../lib/gemini.js';
 
@@ -26,6 +26,9 @@ export default {
         content: '❌ **Please provide either a written question/query or upload an image attachment of your doubt.**'
       });
     }
+
+    // Immediately defer the reply to prevent Discord interaction timing out (3 second gateway limit)
+    await safeDefer(interaction, false);
 
     try {
       // 1. Download and convert attachment if present
