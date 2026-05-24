@@ -16,11 +16,11 @@ export default {
       const { data: userData } = await fetchDocSafe('users', userId, 5000);
       const role = userData?.role || 'user';
 
-      if (role !== 'owner') {
+      if (role !== 'owner' && role !== 'admin') {
         const denyEmbed = new EmbedBuilder()
           .setTitle('🚨 ACCESS DENIED')
           .setColor(0xEF4444) // Red
-          .setDescription(`❌ **Permission Insufficient.** The \`/console_log\` command is restricted to Owner roles only.\n\n*Your current registered role is:* \`${role.toUpperCase()}\``);
+          .setDescription(`❌ **Permission Insufficient.** The \`/console_log\` command is restricted to Owner & Administrative roles.\n\n*Your current registered role is:* \`${role.toUpperCase()}\``);
           
         return await safeReply(interaction, {
           embeds: [denyEmbed],
