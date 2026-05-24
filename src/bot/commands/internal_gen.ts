@@ -151,7 +151,17 @@ export default {
           lastActivity: new Date().toISOString()
         }, { merge: true });
 
-        console.log(`[Firestore DB Sync] User progress log for ${topic} synchronized flawlessly.`);
+        // Save directly to the assets subcollection for /assets sync support
+        const assetId = `${assetType}_${topicSlug}_${Date.now()}`;
+        const assetRef = userRef.collection('assets').doc(assetId);
+        await assetRef.set({
+          title: `${topic} - ${assetType.replace('_', ' ').toUpperCase()}`,
+          type: assetType,
+          rawData: formattedLaTex,
+          createdAt: new Date().toISOString()
+        });
+
+        console.log(`[Firestore DB Sync] User progress log and asset record for ${topic} synchronized flawlessly.`);
       } catch (dbErr: any) {
         console.error('[Internal Gen DB Error] Firestore connection/write warning:', dbErr.message);
       }

@@ -5,7 +5,7 @@ import Markdown from "react-markdown";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import { cn } from "../lib/utils";
-import { updateProgress, trackAIUsage } from "../lib/firebase";
+import { updateProgress, trackAIUsage, saveGeneratedAsset } from "../lib/firebase";
 import { generateNotes as clientGenerateNotes } from "../lib/gemini";
 import { useOnlineStatus, saveNotesToCache, getNotesFromCache, getAllCachedNotes, CachedNotes } from "../lib/offlineCache";
 import { motion, AnimatePresence } from "motion/react";
@@ -69,6 +69,9 @@ export default function StudyGuide({ userData }: { userData?: any }) {
 
       setNotes(noteContent);
       saveNotesToCache(subject, topic, type, noteContent);
+      
+      // Also save generated asset to Firestore so the bots and user library have access to it
+      saveGeneratedAsset(`${topic} - ${type === 'one-page' ? 'One Page Notes' : 'Full Notes'}`, 'notes', noteContent).catch(console.error);
       
       // Track progress
       updateProgress(subject, topic, "notesRead");

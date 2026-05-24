@@ -129,6 +129,28 @@ export async function updateProgress(subject: string, topic: string, type: 'note
   }
 }
 
+export async function saveGeneratedAsset(title: string, type: string, rawData: string) {
+  const scholarSessionId = localStorage.getItem("scholar_session_id");
+  const activeUid = scholarSessionId || auth.currentUser?.uid;
+  if (!activeUid) return;
+
+  const topicId = title.toLowerCase().replace(/[^a-z0-9]/g, "-").slice(0, 50);
+  const assetId = `${type}_${topicId}_${Date.now()}`;
+  const assetRef = doc(db, "users", activeUid, "assets", assetId);
+
+  try {
+    await setDoc(assetRef, {
+      title,
+      type,
+      rawData,
+      createdAt: new Date().toISOString()
+    });
+    console.log(`[Firestore Client API] Successfully saved asset "${title}" to cloud subcollection.`);
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, assetRef.path);
+  }
+}
+
 async function testConnection() {
   try {
     // We try to get a document that doesn't exist to test connectivity.

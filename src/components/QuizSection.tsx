@@ -90,6 +90,12 @@ export default function QuizSection({ userData }: { userData?: any }) {
 
       setQuestions(generatedQuestions);
       saveQuizToCache(subject, topic, difficulty, numQuestions, generatedQuestions);
+
+      // Save to Firestore so the bots and user library have access to it
+      const rawDataString = generatedQuestions.map((q: any, i: number) => `**Q${i+1}:** ${q.question}\nOptions:\n${q.options.map((opt: string, idx: number) => ` ${String.fromCharCode(65 + idx)}) ${opt}`).join('\n')}\n*Correct Answer: ${q.correctAnswer}*\n*Solution:* ${q.explanation}\n`).join('\n');
+      import("../lib/firebase").then(({ saveGeneratedAsset }) => {
+        saveGeneratedAsset(`${topic} - Practice Quiz (${difficulty})`, 'quiz', rawDataString).catch(console.error);
+      }).catch(err => console.error(err));
     } catch (err: any) {
       console.error(err);
       if (err.status === 429 || err.message?.includes("429")) {

@@ -178,6 +178,12 @@ export default function FlashcardMode({ subject, topic, notesContent, onBackToNo
       setLoading(false);
       if (finalFlashcards.length > 0) {
         onFlashcardsLoaded?.(finalFlashcards);
+        
+        // Save to Firestore so the bots and user library have access to it
+        const rawDataString = finalFlashcards.map((c, i) => `[Card ${i+1}] ${c.category}\nFront: ${c.front}\nBack: ${c.back}\n`).join('\n');
+        import("../lib/firebase").then(({ saveGeneratedAsset }) => {
+          saveGeneratedAsset(`${topic} - Flashcards`, 'flashcards', rawDataString).catch(console.error);
+        }).catch(err => console.error(err));
       }
     }
   };
