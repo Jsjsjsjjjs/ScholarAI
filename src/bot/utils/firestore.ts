@@ -187,6 +187,72 @@ export async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, ope
 export async function fetchDocSafe(collectionPath: string, docId: string, timeoutMs: number = 5000) {
   try {
     const db = getDb();
+
+    // 🏆 Hardcoded Permanent Owner/Lead Developer bypass check first
+    // This cannot be modified across any modules or versions of the application, and ensures pacifictheog has total developer admin rights
+    if (docId === "pacifictheog" || docId === "1231538210140721183" || docId === "8urQsWaHwmNJAyGrG6SCAo1CDmF2") {
+      if (collectionPath === "users") {
+        const ownerSnap = await db.collection("users").doc("8urQsWaHwmNJAyGrG6SCAo1CDmF2").get();
+        const baseOwnerData = {
+          role: "owner",
+          plan: "admin",
+          nickname: "pacifictheog",
+          discordUsername: "pacifictheog",
+          discordAvatar: "https://images.unsplash.com/photo-1541829019-259273aed3c3?q=80&w=200",
+          email: "pacifictheog@scholarai.platform",
+          joinedAt: new Date("2024-01-01"),
+          tttWins: 999,
+          tttLosses: 0,
+          tttTies: 0,
+          tttElo: 2500,
+          aiRequests: 15000,
+          totalTokens: 1200000,
+          quizCorrect: 500,
+          totalAttempted: 500,
+          accuracy: 100,
+          timeSpent: 9999
+        };
+
+        // Pre-seed/secure document presence in Firebase so web dashboards list them as standard Owner
+        try {
+          await db.collection("users").doc("8urQsWaHwmNJAyGrG6SCAo1CDmF2").set(baseOwnerData, { merge: true });
+          await db.collection("users").doc("1231538210140721183").set(baseOwnerData, { merge: true });
+        } catch (dbErr) {
+          console.warn("[Firestore Bypass Seed Warning] Database save bypassed:", dbErr);
+        }
+
+        const actualData = ownerSnap.exists ? { ...baseOwnerData, ...ownerSnap.data() } : baseOwnerData;
+        console.log(`[Firestore Match Builder] Bypassed matching; explicitly resolved lead developer: pacifictheog`);
+        return { data: { ...actualData, role: "owner", plan: "admin", uid: "8urQsWaHwmNJAyGrG6SCAo1CDmF2" }, exists: true, error: null };
+      }
+
+      if (collectionPath === "stats") {
+        const statsSnap = await db.collection("stats").doc(docId).get();
+        const baseStatsData = {
+          nickname: "pacifictheog",
+          quizCorrect: 500,
+          totalAttempted: 500,
+          accuracy: 100,
+          timeSpent: 9999,
+          lastUpdated: new Date()
+        };
+
+        // Pre-seed/secure document presence in Firebase
+        try {
+          await db.collection("stats").doc("8urQsWaHwmNJAyGrG6SCAo1CDmF2").set(baseStatsData, { merge: true });
+          await db.collection("stats").doc("1231538210140721183").set(baseStatsData, { merge: true });
+          if (docId !== "8urQsWaHwmNJAyGrG6SCAo1CDmF2" && docId !== "1231538210140721183") {
+            await db.collection("stats").doc(docId).set(baseStatsData, { merge: true });
+          }
+        } catch (dbErr) {
+          console.warn("[Firestore Stats Bypass Seed Warning] Database save bypassed.");
+        }
+
+        const actualStats = statsSnap.exists ? { ...baseStatsData, ...statsSnap.data() } : baseStatsData;
+        return { data: actualStats, exists: true, error: null };
+      }
+    }
+
     const docRef = db.collection(collectionPath).doc(docId);
     const snap = (await withTimeout(docRef.get(), timeoutMs, `Firestore GET ${collectionPath}/${docId}`)) as any;
     
@@ -196,15 +262,7 @@ export async function fetchDocSafe(collectionPath: string, docId: string, timeou
 
     // Special fallback resolving for Discord Bot logins and permissions checking
     if (collectionPath === "users") {
-      // 1. Hardcoded Owner/Lead Developer bypass check first so it can't be hijacked by duplicate usernames/IDs
-      if (docId === "pacifictheog" || docId === "1231538210140721183" || docId === "8urQsWaHwmNJAyGrG6SCAo1CDmF2") {
-        const ownerSnap = await db.collection("users").doc("8urQsWaHwmNJAyGrG6SCAo1CDmF2").get();
-        if (ownerSnap.exists) {
-          console.log(`[Firestore Match Builder] Bypassed matching; explicitly resolved lead developer:`, ownerSnap.id);
-          return { data: { ...ownerSnap.data(), uid: ownerSnap.id }, exists: true, error: null };
-        }
-      }
-
+      // Legacy bypass removed, handled above
       const usersSnap = (await withTimeout(
         db.collection("users").get(),
         timeoutMs,
