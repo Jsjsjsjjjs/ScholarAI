@@ -5,30 +5,13 @@ import { fetchDocSafe, getDb } from '../utils/firestore.js';
 export default {
   data: new SlashCommandBuilder()
     .setName('analytics')
-    .setDescription('📊 [Admin Only] View aggregated platform usage statistics and telemetry'),
+    .setDescription('📊 View aggregated platform usage statistics and telemetry'),
 
   async execute(interaction: any) {
     const userId = interaction.user.id;
 
     try {
-      // 1. Check Authorization
-      console.log(`[Analytics] Verifying permissions for user: ${userId}`);
-      const { data: userData } = await fetchDocSafe('users', userId, 5000);
-      const role = userData?.role || 'user';
-
-      if (role !== 'owner' && role !== 'admin') {
-        const denyEmbed = new EmbedBuilder()
-          .setTitle('🚨 ACCESS DENIED')
-          .setColor(0xEF4444) // Red
-          .setDescription(`❌ **Permission Insufficient.** The \`/analytics\` command is restricted to Owner & Administrative roles.\n\n*Your current registered role is:* \`${role.toUpperCase()}\``);
-          
-        return await safeReply(interaction, {
-          embeds: [denyEmbed],
-          ephemeral: true
-        });
-      }
-
-      // 2. Fetch platform collections telemetry
+      // 1. Fetch platform collections telemetry
       const db = getDb();
       const usersCol = await db.collection('users').get();
       const statsCol = await db.collection('stats').get();

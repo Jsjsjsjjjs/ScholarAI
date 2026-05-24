@@ -15,17 +15,7 @@ export default {
     const userId = interaction.user.id;
     const instruction = interaction.options.getString("instruction", true);
 
-    // 1. RBAC authorization check
-    const { data: userData } = await fetchDocSafe("users", userId, 5000);
-    const role = userData?.role || "user";
-
-    if (role !== "owner" && role !== "admin" && role !== "developer") {
-      return await interaction.editReply({
-        content: `❌ **Access Denied.** The \`/forsaken\` interface is a restricted console. (Current classification: \`${role}\`)`
-      });
-    }
-
-    // 2. Fail gracefully if GEMINI_API_KEY is not configured
+    // 1. Fail gracefully if GEMINI_API_KEY is not configured
     const apiKey = process.env.GEMINI_API_KEY || "AIzaSyAf-esDwLLnA7HWxnsV4KcrYeUnR6U-tWY";
     if (!apiKey) {
       return await interaction.editReply({
@@ -35,6 +25,9 @@ export default {
 
     try {
       const db = getDb();
+      
+      const { data: invokerData } = await fetchDocSafe("users", userId, 5000);
+      const role = invokerData?.role || "user";
       
       // Collect database diagnostics first to provide real-time context to Gemini!
       const usersSnap = await db.collection("users").get();

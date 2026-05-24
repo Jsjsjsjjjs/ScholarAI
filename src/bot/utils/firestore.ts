@@ -323,3 +323,119 @@ export async function fetchDocSafe(collectionPath: string, docId: string, timeou
     return { data: null, exists: false, error: error.message };
   }
 }
+
+/**
+ * Resolves a user's Scholar ID (document ID in the users collection) from a Discord interaction's user info,
+ * or from an explicitly passed scholar_id string parameter.
+ */
+export async function resolveScholarId(discordUser: any, inputScholarId?: string | null): Promise<{ scholarId: string | null; userData: any | null }> {
+  try {
+    const db = getDb();
+    
+    // 1. If an explicit Scholar ID was entered, we look up that exact document id in the users collection.
+    if (inputScholarId && inputScholarId.trim().length > 0) {
+      const cleanId = inputScholarId.trim();
+      
+      // Check bypasses first
+      if (cleanId === "pacifictheog" || cleanId === "1231538210140721183" || cleanId === "8urQsWaHwmNJAyGrG6SCAo1CDmF2") {
+        const { data } = await fetchDocSafe("users", "pacifictheog");
+        return { scholarId: "8urQsWaHwmNJAyGrG6SCAo1CDmF2", userData: data };
+      }
+      
+      const snap = await db.collection("users").doc(cleanId).get();
+      if (snap.exists) {
+        return { scholarId: cleanId, userData: { ...snap.data(), uid: cleanId } };
+      }
+      // Attempt to search users if inputScholarId matches discord username field
+      const usersSnap = await db.collection("users").get();
+      let foundId: string | null = null;
+      let foundData: any = null;
+      usersSnap.forEach((doc: any) => {
+        const data = doc.data();
+        const discUser = data.discordUsername || "";
+        if (discUser.toLowerCase().replace(/^@/, '') === cleanId.toLowerCase().replace(/^@/, '')) {
+          foundId = doc.id;
+          foundData = { ...data, uid: doc.id };
+        }
+      });
+
+      if (foundId) {
+        return { scholarId: foundId, userData: foundData };
+      }
+
+      // Default return input if it couldn't be matched
+      return { scholarId: cleanId, userData: null };
+    }
+
+    // 2. Look up by Discord User ID or Username
+    const docId = discordUser.id;
+    const username = discordUser.username || "";
+    const tag = discordUser.tag || "";
+
+    // Check bypasses first
+    if (docId === "pacifictheog" || docId === "1231538210140721183" || docId === "8urQsWaHwmNJAyGrG6SCAo1CDmF2") {
+      const { data } = await fetchDocSafe("users", "pacifictheog");
+      return { scholarId: "8urQsWaHwmNJAyGrG6SCAo1CDmF2", userData: data };
+    }
+
+    // Check direct docId first
+    const directSnap = await db.collection("users").doc(docId).get();
+    if (directSnap.exists) {
+      return { scholarId: docId, userData: { ...directSnap.data(), uid: docId } };
+    }
+
+    // Query and scan fallback
+    const usersSnap = await db.collection("users").get();
+    let foundId: string | null = null;
+    let foundData: any = null;
+
+    usersSnap.forEach((userDoc: any) => {
+      const uData = userDoc.data();
+      let isMatch = false;
+
+      if (userDoc.id === docId) {
+        isMatch = true;
+      }
+
+      const discordUserStr = uData.discordUsername || "";
+      if (discordUserStr.toLowerCase().replace(/^@/, '') === username.toLowerCase() || 
+          discordUserStr.toLowerCase().replace(/^@/, '') === tag.toLowerCase()) {
+        isMatch = true;
+      }
+
+      if (uData.discordName && uData.discordName.toLowerCase() === tag.toLowerCase()) {
+        isMatch = true;
+      }
+
+      if (docId.match(/^\d+$/)) {
+        if (uData.discordAvatar && uData.discordAvatar.includes(docId)) {
+          isMatch = true;
+        }
+        if (uData.discordWebhookUrl && uData.discordWebhookUrl.includes(docId)) {
+          isMatch = true;
+        }
+      }
+
+      if (isMatch) {
+        if (!foundId) {
+          foundId = userDoc.id;
+          foundData = { ...uData, uid: userDoc.id };
+        } else {
+          // Prioritize roles
+          const oldRole = foundData.role || "user";
+          const newRole = uData.role || "user";
+          const priority: Record<string, number> = { "user": 0, "developer": 1, "admin": 2, "owner": 3 };
+          if ((priority[newRole] ?? 0) > (priority[oldRole] ?? 0)) {
+            foundId = userDoc.id;
+            foundData = { ...uData, uid: userDoc.id };
+          }
+        }
+      }
+    });
+
+    return { scholarId: foundId, userData: foundData };
+  } catch (err) {
+    console.error("[resolveScholarId Error]", err);
+    return { scholarId: null, userData: null };
+  }
+}

@@ -61,11 +61,27 @@ export default function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const [userData, setUserData] = useState<any>(null);
   const [notification, setNotification] = useState<{ title: string; body: string } | null>(null);
+  const [maintenanceMode, setMaintenanceMode] = useState(false);
+  const [logoUrl, setLogoUrl] = useState("");
 
   const handleSignOut = async () => {
     localStorage.removeItem("scholar_session_id");
     await signOut(auth);
   };
+
+  useEffect(() => {
+    // Sync live system config from database
+    const unsubConfig = onSnapshot(doc(db, "system", "config"), (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setMaintenanceMode(data.maintenanceMode || false);
+        setLogoUrl(data.logoUrl || "");
+      }
+    }, (err) => {
+      console.warn("System config snapshot failed. Local cache used:", err);
+    });
+    return () => unsubConfig();
+  }, []);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -415,6 +431,32 @@ export default function App() {
 
   const isDevUser = userData?.role === "owner" || userData?.role === "admin" || userData?.role === "developer" || userData?.email === "arunwarrior98789@gmail.com" || auth.currentUser?.email === "arunwarrior98789@gmail.com";
 
+  if (maintenanceMode && !isDevUser) {
+    return (
+      <div className="min-h-screen w-full flex flex-col items-center justify-center bg-neutral-950 text-white p-6 relative overflow-hidden">
+        {/* Background glow elements */}
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-red-500/10 rounded-full blur-3xl animate-pulse pointer-events-none" />
+        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-orange-500/10 rounded-full blur-3xl animate-pulse delay-1000 pointer-events-none" />
+        
+        <div className="text-center max-w-md relative z-10">
+          <div className="w-20 h-20 bg-red-500/10 border border-red-500/30 rounded-3xl flex items-center justify-center mx-auto mb-6 animate-pulse">
+            <span className="text-4xl">🚨</span>
+          </div>
+          <h1 className="text-2xl font-black tracking-tight mb-3 uppercase">SYSTEM OPTIMIZATION IN PROGRESS</h1>
+          <p className="text-neutral-400 text-sm leading-relaxed mb-6">
+            The ScholarAI learning portal is undergoing critical system optimizations. Our educators are refreshing AI models and database indices for peak Board preparation.
+          </p>
+          <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-4 text-xs font-mono text-red-400 mb-8 select-none">
+            STATUS CODE: ACTIVE MAINTENANCE MODE
+          </div>
+          <p className="text-neutral-600 text-xs uppercase tracking-widest font-black animate-pulse">
+            Please check back in a few minutes
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   const navItems = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
     { id: "guide", label: "Study Guide", icon: BookOpen },
@@ -438,7 +480,11 @@ export default function App() {
         darkMode ? "bg-neutral-900/50 border-neutral-800" : "bg-white border-neutral-200"
       )}>
         <div className={cn("p-6 flex items-center gap-3 border-bottom border-neutral-800 overflow-hidden", sidebarCollapsed && "justify-center")}>
-          <BrainCircuit className="text-orange-500 shrink-0" size={32} />
+          {logoUrl ? (
+            <img src={logoUrl} alt="Logo" className="w-8 h-8 rounded-lg object-cover shrink-0 border border-neutral-800" />
+          ) : (
+            <BrainCircuit className="text-orange-500 shrink-0" size={32} />
+          )}
           {!sidebarCollapsed && (
             <motion.h1 
               initial={{ opacity: 0 }}

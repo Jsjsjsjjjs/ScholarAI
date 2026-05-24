@@ -1,39 +1,67 @@
 import { safeReply } from '../utils/responses.js';
 import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
-import { fetchDocSafe } from '../utils/firestore.js';
+import { fetchDocSafe, resolveScholarId } from '../utils/firestore.js';
 
 export default {
   data: new SlashCommandBuilder()
     .setName('profile')
-    .setDescription('👤 Shows a detailed academic profile and system statistics card')
+    .setDescription('👤 Shows a detailed academic profile and system statistics card based on Scholar ID')
+    .addStringOption(option =>
+      option.setName('scholar_id')
+        .setDescription('Optional: Specific Scholar ID to view (Document ID in the database)')
+        .setRequired(false)
+    )
     .addUserOption(option => 
       option.setName('target')
-        .setDescription('Select is student user to view their study profile')
+        .setDescription('Optional: Select a Discord student user to view their linked profile')
         .setRequired(false)
     ),
   async execute(interaction: any) {
     // 1. Defer the interaction since database queries can exceed the 3-second threshold
     await interaction.deferReply();
 
+    const inputScholarId = interaction.options.getString('scholar_id');
     const targetUser = interaction.options.getUser('target') || interaction.user;
-    const targetId = targetUser.id;
 
     try {
-      // 2. Query user metadata and academic stats collections
-      const { data: userData, exists: userExists } = await fetchDocSafe('users', targetId, 5000);
-      const { data: statsData, exists: statsExists } = await fetchDocSafe('stats', targetId, 5000);
+      // 2. Resolve Scholar ID or Discord linked profile
+      let resolvedScholarId: string | null = null;
+      let resolvedUserData: any = null;
 
-      if (!userExists && !statsExists) {
+      if (inputScholarId) {
+        const { scholarId, userData } = await resolveScholarId(interaction.user, inputScholarId);
+        resolvedScholarId = scholarId;
+        resolvedUserData = userData;
+      } else {
+        const { scholarId, userData } = await resolveScholarId(targetUser);
+        resolvedScholarId = scholarId;
+        resolvedUserData = userData;
+      }
+
+      if (!resolvedScholarId) {
         return await interaction.editReply({
-          content: `⚠️ **Scholar Not Found:** \`${targetUser.tag}\` does not have an active session associated with our central database yet.`
+          content: `⚠️ **Scholar Profile Not Found:** We could not resolve a Scholar ID mapping in our database for ${targetUser.tag}. Please sign in on the website, link your Discord settings, or provide a direct \`scholar_id\` parameter.`
         });
       }
 
-      // 3. Extrapolate profiles parameters
+      // 3. Query user metadata and academic stats collections on basis of resolved Scholar ID
+      const { data: userData, exists: userExists } = resolvedUserData 
+        ? { data: resolvedUserData, exists: true } 
+        : await fetchDocSafe('users', resolvedScholarId, 5000);
+
+      const { data: statsData, exists: statsExists } = await fetchDocSafe('stats', resolvedScholarId, 5000);
+
+      if (!userExists && !statsExists) {
+        return await interaction.editReply({
+          content: `⚠️ **Scholar Not Found:** Scholar ID \`${resolvedScholarId}\` does not have an active session associated with our central database.`
+        });
+      }
+
+      // 4. Extrapolate profiles parameters
       const userDoc = userData || {};
       const statsDoc = statsData || {};
 
-      const nickname = userDoc.nickname || statsDoc.nickname || targetUser.username;
+      const nickname = userDoc.nickname || statsDoc.nickname || (inputScholarId ? `Scholar-${resolvedScholarId.slice(0,6)}` : targetUser.username);
       const role = (userDoc.role || 'Scholar').toUpperCase();
       const plan = (userDoc.plan || 'Free Tier').toUpperCase();
       
@@ -71,21 +99,22 @@ export default {
       const avatarUrl = targetUser.displayAvatarURL({ forceStatic: false }) || 'https://images.unsplash.com/photo-1541829019-259273aed3c3?q=80&w=200';
 
       const embed = new EmbedBuilder()
-        .setTitle(`🎓 SCHOLAR CARD: ${nickname.toUpperCase()}`)
+        .setTitle(`🎓 Scholar: ${nickname.toUpperCase()}`)
         .setThumbnail(avatarUrl)
         .setColor(0x0284C7) // Sky blue
-        .setDescription(`Active academic diagnostic profile since **${joinedDate}**. Fully integrated with Central Intelligence Systems.`)
+        .setDescription(`Academic study profile for Scholar ID: \`${resolvedScholarId}\` since **${joinedDate}**. Fully integrated with Central Intelligence Systems.`)
         .addFields(
-          { name: '👤 Nickname / Identification', value: `\`${nickname}\``, inline: true },
+          { name: '👤 Username / Nick', value: `\`${nickname}\``, inline: true },
+          { name: '🆔 Scholar ID', value: `\`${resolvedScholarId}\``, inline: true },
           { name: '🛡️ Role Designation', value: `\`${role}\``, inline: true },
           { name: '✉️ Registered Email', value: `\`${email}\``, inline: true },
-          { name: '💎 Account Priority Plan', value: `\`${plan}\``, inline: true },
+          { name: '💎 Priority Plan', value: `\`${plan}\``, inline: true },
           { name: '📚 Total Revision Points', value: `\`${quizCorrect * 10} pts\``, inline: true },
           { name: '🧠 Accuracy Quotient', value: `\`${accuracy}% (${quizCorrect}/${totalAttempted})\``, inline: true },
-          { name: '⏱️ Study Session Duration', value: `\`${timeSpent} minutes\``, inline: true },
-          { name: '👾 Cognitive Duel Rank', value: `\`${elo} ELO (Record: ${tttWins}W - ${tttLosses}L - ${tttTies}D)\``, inline: false }
+          { name: '⏱️ Revision Duration', value: `\`${timeSpent} minutes\``, inline: true },
+          { name: '👾 Game Elo Rating', value: `\`${elo} ELO (Wins: ${tttWins} | Losses: ${tttLosses})\``, inline: false }
         )
-        .setFooter({ text: 'ScholarAI Platform • Empirical Study Logs', iconURL: avatarUrl })
+        .setFooter({ text: `ScholarAI Central Database Lookup • ID: ${resolvedScholarId}`, iconURL: avatarUrl })
         .setTimestamp();
 
       await interaction.editReply({

@@ -1,6 +1,7 @@
 import { safeReply } from '../utils/responses.js';
 import { SlashCommandBuilder, EmbedBuilder, Attachment, AttachmentBuilder, MessageFlags } from 'discord.js';
 import { solveDoubt } from '../../lib/gemini.js';
+import { formatMathAndScience } from '../utils/mathFormatter.js';
 
 export default {
   data: new SlashCommandBuilder()
@@ -60,7 +61,7 @@ export default {
 
       // Discord Embed Description limit is 4096. Let's safety chunk if response is too long.
       const embeds: EmbedBuilder[] = [];
-      const cleanSolution = solution.replace(/\\\[|\\\]|\\\(|\\\)/g, '$'); // optimize LaTeX for Discord formatting
+      const cleanSolution = formatMathAndScience(solution);
       
       const paragraphs = cleanSolution.split('\n');
       let currentDesc = '';

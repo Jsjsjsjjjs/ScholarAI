@@ -9,16 +9,6 @@ export default {
   async execute(interaction: any) {
     const userId = interaction.user.id;
 
-    // Check roles
-    const { data: userData } = await fetchDocSafe("users", userId, 5000);
-    const role = userData?.role || "user";
-    
-    if (role !== "owner" && role !== "admin" && role !== "developer") {
-      return await interaction.editReply({
-        content: `❌ **Access Denied.** The live system monitoring dashboard requires Lead Developer clearance.`
-      });
-    }
-
     try {
       const getDashboardPayload = async () => {
         const db = getDb();

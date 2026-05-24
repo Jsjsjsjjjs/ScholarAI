@@ -6,20 +6,9 @@ import { allCommands } from "./index.js";
 export default {
   data: new SlashCommandBuilder()
     .setName("reload")
-    .setDescription("👑 Owner-Only: Reloads the command engine, syncs cache, and re-deploys command schemas."),
+    .setDescription("⚙️ Reloads the command engine, syncs cache, and re-deploys command schemas."),
   async execute(interaction: any) {
     const userId = interaction.user.id;
-
-    // 1. Fetch user permissions via Firestore
-    const { data: userData } = await fetchDocSafe("users", userId, 5000);
-    const role = userData?.role || "user";
-
-    // Allow owner, admin, or developer role to reload engine
-    if (role !== "owner" && role !== "admin" && role !== "developer") {
-      return await interaction.editReply({
-        content: `❌ **Access Denied.** The \`/reload\` engine reboot command is reserved for Super Owners & Lead Developers only. (Your rank: \`${role}\`)`
-      });
-    }
 
     try {
       const client = interaction.client;

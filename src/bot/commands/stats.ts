@@ -1,40 +1,55 @@
 import { SlashCommandBuilder } from 'discord.js';
-import { fetchDocSafe } from '../utils/firestore.js';
+import { fetchDocSafe, resolveScholarId } from '../utils/firestore.js';
 
 export default {
   data: new SlashCommandBuilder()
     .setName('stats')
-    .setDescription('Shows the current AI and usage stats fetched robustly from Firestore.'),
+    .setDescription('Shows the current AI and usage stats fetched robustly from Firestore based on Scholar ID.')
+    .addStringOption(option =>
+      option.setName('scholar_id')
+        .setDescription('Optional: Specific Scholar ID to look up (defaults to your linked Discord profile)')
+        .setRequired(false)
+    ),
   async execute(interaction: any) {
-    // 1. We assume `interaction.deferReply()` has ALREADY been called by interactionCreate.ts.
-    // This stops infinite loading on Discord UI immediately.
+    const inputScholarId = interaction.options.getString('scholar_id');
 
-    // 2. Fetch data using our robust connection client with a 5-second timeout.
-    const userId = interaction.user.id;
-    const { data: userData, exists, error } = await fetchDocSafe('users', userId, 5000);
+    // 1. Resolve Scholar ID or Discord linked profile
+    const { scholarId, userData: resolvedUserData } = await resolveScholarId(interaction.user, inputScholarId);
 
-    // 3. Handle connection timeouts or Firestore logic rejections
-    if (error) {
-      // Because we deferred, we must use editReply
+    if (!scholarId) {
       return await interaction.editReply({
-        content: `⚠️ **Network Timeout / Error:** Could not reach the Database to fetch your stats. Please try again in a few moments.\n\n*Diagnostics: ${error}*`
+        content: `⚠️ **No Profile Found:** We could not resolve a Scholar ID for you in our systems. Please log in first on the website or specify a valid \`scholar_id\` command option.`
       });
     }
 
-    // 4. Handle normal DB state empty vs populated
+    // 2. Fetch user document safely
+    const { data: userData, exists, error } = resolvedUserData 
+      ? { data: resolvedUserData, exists: true, error: null } 
+      : await fetchDocSafe('users', scholarId, 5000);
+
+    // 3. Handle network/timeout errors
+    if (error) {
+      return await interaction.editReply({
+        content: `⚠️ **Network Timeout / Error:** Could not reach the Database to fetch scholar stats.\n\n*Diagnostics: ${error}*`
+      });
+    }
+
     if (!exists || !userData) {
       return await interaction.editReply({
-        content: '📊 Welcome! It looks like you do not have any tracked statistics yet. Use some AI tools first to populate your profile.'
+        content: `📊 **Scholar ID Resolved:** \`${scholarId}\`\nIt looks like this profile doesn't have any tracked statistics yet. Use some AI tools on the website first to populate your profile!`
       });
     }
 
-    // 5. Successful response mapping
+    // 4. Extract telemetry and render
+    const nickname = userData.nickname || 'Scholar Elite';
     const totalRequests = userData.aiRequests || 0;
     const totalTokens = userData.totalTokens || 0;
-    const lastActive = userData.lastAIActivity?.toDate()?.toLocaleString() || 'Unknown';
+    const lastActive = userData.lastAIActivity?.toDate 
+      ? userData.lastAIActivity.toDate().toLocaleString() 
+      : (userData.lastAIActivity ? String(userData.lastAIActivity) : 'Unknown');
 
     await interaction.editReply({
-      content: `📊 **Your AI Statistics:**\n\n- **Total Requests:** ${totalRequests}\n- **Tokens Consumed:** ${totalTokens}\n- **Last Used:** ${lastActive}`
+      content: `📊 **AI Usage Statistics for Scholar:**\n\n- **Scholar ID:** \`${scholarId}\`\n- **Nickname:** **${nickname}**\n- **Total requests:** ${totalRequests}\n- **Tokens Consumed:** ${totalTokens}\n- **Last Used:** ${lastActive}`
     });
   },
 };

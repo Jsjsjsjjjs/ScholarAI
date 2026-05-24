@@ -5,30 +5,13 @@ import { fetchDocSafe, getDb } from '../utils/firestore.js';
 export default {
   data: new SlashCommandBuilder()
     .setName('console_log')
-    .setDescription('📋 [Admin Only] View recent system-logs and database diagnostics directly via Discord'),
+    .setDescription('📋 View recent system-logs and database diagnostics directly via Discord'),
 
   async execute(interaction: any) {
     const userId = interaction.user.id;
 
     try {
-      // 1. Check Authorization
-      console.log(`[Console Log] Verifying administrator status for: ${userId}`);
-      const { data: userData } = await fetchDocSafe('users', userId, 5000);
-      const role = userData?.role || 'user';
-
-      if (role !== 'owner' && role !== 'admin') {
-        const denyEmbed = new EmbedBuilder()
-          .setTitle('🚨 ACCESS DENIED')
-          .setColor(0xEF4444) // Red
-          .setDescription(`❌ **Permission Insufficient.** The \`/console_log\` command is restricted to Owner & Administrative roles.\n\n*Your current registered role is:* \`${role.toUpperCase()}\``);
-          
-        return await safeReply(interaction, {
-          embeds: [denyEmbed],
-          ephemeral: true
-        });
-      }
-
-      // 2. Fetch latest logs from Firestore system-logs
+      // 1. Fetch latest logs from Firestore system-logs
       const db = getDb();
       let logsList: any[] = [];
 

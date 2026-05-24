@@ -79,16 +79,6 @@ export default {
   async execute(interaction: any) {
     const userId = interaction.user.id;
 
-    // Check Authorization
-    const { data: userData } = await fetchDocSafe("users", userId, 5000);
-    const role = userData?.role || "user";
-    
-    if (role !== "owner" && role !== "admin" && role !== "developer") {
-      return await interaction.editReply({
-        content: `❌ **Access Denied.** The \`/admin\` command is restricted to high-tier developers.`
-      });
-    }
-
     const group = interaction.options.getSubcommandGroup();
     const command = interaction.options.getSubcommand();
     const db = getDb();

@@ -8,6 +8,7 @@ import {
   generatePracticeTest, 
   generateImportantQuestions 
 } from '../../lib/gemini.js';
+import { formatMathAndScience } from '../utils/mathFormatter.js';
 
 export default {
   data: new SlashCommandBuilder()
@@ -82,7 +83,7 @@ export default {
       }
 
       // 3. Split content to embeds safely (Discord limit: 4096 characters per embed)
-      const formattedLaTex = contentStr.replace(/\\\[|\\\]|\\\(|\\\)/g, '$'); // uniform LaTeX
+      const formattedLaTex = formatMathAndScience(contentStr);
       const paragraphs = formattedLaTex.split('\n');
       let currentDesc = '';
 
