@@ -10,7 +10,11 @@ export default {
     const userId = interaction.user.id;
 
     // Check roles
-    const { data: userData } = await fetchDocSafe("users", userId, 5000);
+    let { data: userData } = await fetchDocSafe("users", userId, 5000);
+    if (!userData && interaction.user.username) {
+      const fallbackResult = await fetchDocSafe("users", interaction.user.username, 5000);
+      userData = fallbackResult.data;
+    }
     const role = userData?.role || "user";
     
     if (role !== "owner" && role !== "admin" && role !== "developer") {

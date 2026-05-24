@@ -21,8 +21,13 @@ export default {
     const db = getDb();
 
     // Verify User Connection (mapping discord ID to their platform UID)
-    const { data: userData } = await fetchDocSafe("users", userId, 5000);
-    const platformUid = userData ? (userData.uid || userId) : userId;
+    let { data: userData } = await fetchDocSafe("users", userId, 5000);
+    if (!userData && interaction.user.username) {
+      console.log(`[Assets Command] Numeric ID lookup failed. Retrying matching via Discord username: ${interaction.user.username}`);
+      const fallbackResult = await fetchDocSafe("users", interaction.user.username, 5000);
+      userData = fallbackResult.data;
+    }
+    const platformUid = userData ? (userData.uid || userData.id || userId) : userId;
 
     let assets: any[] = [];
     try {
@@ -116,26 +121,9 @@ export default {
       }
 
       try {
-        // Generating PDF buffer from rawData using jsPDF (server-side capable equivalent to web platform)
-        // Since we are in Node.js, html2canvas isn't available, we use jsPDF core functionality directly.
-        const pdf = new jsPDF("p", "mm", "a4");
-        pdf.setFontSize(16);
-        pdf.text(selectedAsset.title || "ScholarAI Asset", 10, 15);
-        pdf.setFontSize(11);
+        const { generateTextPdf } = await import('../utils/pdfGenerator.js');
+        const pdfBuffer = await generateTextPdf(selectedAsset.title || "ScholarAI Asset", String(selectedAsset.rawData));
         
-        const splitText = pdf.splitTextToSize(String(selectedAsset.rawData), 190);
-        let yPos = 25;
-        
-        for (let i = 0; i < splitText.length; i++) {
-          if (yPos > 280) {
-            pdf.addPage();
-            yPos = 15;
-          }
-          pdf.text(splitText[i], 10, yPos);
-          yPos += 7;
-        }
-
-        const pdfBuffer = Buffer.from(pdf.output("arraybuffer"));
         let pdfFilename = `${(selectedAsset.title || "asset").replace(/[^a-zA-Z0-9]/g, "_").toLowerCase()}.pdf`;
         const attachment = new AttachmentBuilder(pdfBuffer, { name: pdfFilename });
 

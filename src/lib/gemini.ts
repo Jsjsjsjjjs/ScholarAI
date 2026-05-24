@@ -112,7 +112,7 @@ export class GeminiFailoverService {
   public async generate(prompt: string): Promise<string> {
     return this.executeWithFailover(async (client) => {
       const response = await client.models.generateContent({
-        model: "gemini-3.5-flash",
+        model: "gemini-1.5-flash",
         contents: prompt
       });
       return response.text || "";

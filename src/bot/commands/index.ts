@@ -14,6 +14,7 @@ import * as reload from './reload.js';
 import * as forsaken from './forsaken.js';
 import * as admin from './admin.js';
 import * as dashboard from './dashboard.js';
+import * as change_id from './change_id.js';
 
 export const allCommands: any[] = [
   analytics.default || analytics,
@@ -32,4 +33,5 @@ export const allCommands: any[] = [
   forsaken.default || forsaken,
   admin.default || admin,
   dashboard.default || dashboard,
+  change_id.default || change_id,
 ];

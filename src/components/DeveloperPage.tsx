@@ -32,7 +32,7 @@ export default function DeveloperPage({ userData }: DeveloperPageProps) {
   // States for System Config (Dynamic UI Settings)
   const [maintenanceMode, setMaintenanceMode] = useState(false);
   const [logoUrl, setLogoUrl] = useState("");
-  const [activeModel, setActiveModel] = useState("gemini-3.5-flash");
+  const [activeModel, setActiveModel] = useState("gemini-1.5-flash");
   const [requestCapLimit, setRequestCapLimit] = useState(100);
 
   // States for Users and Stats List
