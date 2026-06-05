@@ -8,7 +8,7 @@ import {
   ComponentType, 
   AttachmentBuilder 
 } from 'discord.js';
-import { getDb } from '../utils/firestore.js';
+import { getDb, resolveScholarId } from '../utils/firestore.js';
 import { 
   generateNotes, 
   generateFlashcards, 
@@ -356,8 +356,9 @@ export default {
         components: [row]
       });
 
-      try {
+       try {
         let contentStr = '';
+        let structuredData: any = null;
 
         // 2. Fetch raw educational contents automatically matched from Gemini SDK
         if (assetType === 'notes') {
@@ -367,10 +368,34 @@ export default {
           contentStr = quizItems && quizItems.length > 0
             ? quizItems.map((q: any, i: number) => `**Question ${i+1}:** ${q.question}\nOptions:\n${q.options.map((opt: string, idx: number) => `  ${String.fromCharCode(65 + idx)}) ${opt}`).join('\n')}\n*Correct Answer: ${q.correctAnswer}*\n*Solution Explanation:* ${q.explanation}\n`).join('\n')
             : 'Unresolved MCQ study block.';
+          structuredData = quizItems;
         } else if (assetType === 'pyqs') {
           contentStr = await generateImportantQuestions(subject, topic, 4);
         } else {
           contentStr = await generateNotes(subject, topic, 'one-page');
+        }
+
+        // Save progress / offline sync to the database
+        try {
+          const { scholarId } = await resolveScholarId(menuInteraction.user);
+          const activeScholarId = scholarId || menuInteraction.user.id;
+          const db = getDb();
+          const userRef = db.collection('users').doc(activeScholarId);
+          
+          const syncDocId = `${assetType}:${subject.toLowerCase()}:${topicSlug}`;
+          const syncRef = userRef.collection('offline_sync').doc(syncDocId);
+          await syncRef.set({
+            subject: subject,
+            topic: topic,
+            type: assetType,
+            content: contentStr,
+            questions: assetType === 'quiz' ? structuredData : null,
+            items: structuredData,
+            timestamp: Date.now()
+          });
+          console.log(`[Assets Command] Offline synced ${assetType} for topic ${topic} to user ${activeScholarId}.`);
+        } catch (dbErr: any) {
+          console.error('[Assets DB Error] Failed to write offline sync doc:', dbErr.message);
         }
 
         // 3. Compile Programmatic PDF Buffer using the exact same library (jsPDF)

@@ -25,11 +25,25 @@ import {
   Loader2,
   Gamepad2,
   Bell,
-  Terminal
+  Terminal,
+  LifeBuoy
 } from "lucide-react";
 
 import { cn } from "./lib/utils";
 import Auth from "./components/Auth";
+import { saveNotesToCache, saveQuizToCache, saveFlashcardsToCache, saveImpsToCache } from "./lib/offlineCache";
+import { dbService, getActiveDB, setActiveDB } from "./lib/dbService";
+import { getSupabase } from "./lib/supabase";
+
+// Helper function to resolve infinite loading state during database switch
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, errorMsg: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(errorMsg)), timeoutMs)
+    )
+  ]);
+}
 
 // Lazy load components for performance optimization
 import Dashboard from "./components/Dashboard";
@@ -41,6 +55,7 @@ const DoubtSolver = lazy(() => import("./components/DoubtSolver"));
 const TicTacToe = lazy(() => import("./components/TicTacToe"));
 const StudyReminders = lazy(() => import("./components/StudyReminders"));
 const DeveloperPage = lazy(() => import("./components/DeveloperPage"));
+const TicketSystem = lazy(() => import("./components/TicketSystem"));
 
 const ModuleLoader = () => (
   <div className="w-full py-20 flex flex-col items-center justify-center gap-4">
@@ -63,6 +78,7 @@ export default function App() {
   const [notification, setNotification] = useState<{ title: string; body: string } | null>(null);
   const [maintenanceMode, setMaintenanceMode] = useState(false);
   const [logoUrl, setLogoUrl] = useState("");
+  const [dbTrigger, setDbTrigger] = useState(0);
 
   const handleSignOut = async () => {
     localStorage.removeItem("scholar_session_id");
@@ -76,9 +92,28 @@ export default function App() {
         const data = docSnap.data();
         setMaintenanceMode(data.maintenanceMode || false);
         setLogoUrl(data.logoUrl || "");
+
+        // Universal Routing Dynamic Switch & Switch Propagation
+        const liveDb = data.activeDatabase || "firestore";
+        const currentActiveDb = getActiveDB();
+        if (liveDb !== currentActiveDb) {
+          console.log(`[Universal Router] Propagating active DB switch from '${currentActiveDb}' to '${liveDb}' in real-time.`);
+          setActiveDB(liveDb);
+
+          setNotification({
+            title: "Database Relocated ⚠️",
+            body: `The active datastore was re-routed globally to ${
+              liveDb === "firestore" ? "Cloud Firestore (NoSQL)" : "Supabase PostgreSQL (Relation)"
+            }. Re-hydrating context.`
+          });
+
+          // Perform gentle teardown/reinitialization without freezing interface
+          setUserData(null);
+          setDbTrigger(prev => prev + 1);
+        }
       }
     }, (err) => {
-      console.warn("System config snapshot failed. Local cache used:", err);
+      // System config snapshot failed; using local fallback logic
     });
     return () => unsubConfig();
   }, []);
@@ -111,6 +146,7 @@ export default function App() {
     let isCurrent = true;
     let unsubUserDoc: (() => void) | undefined;
     let unsubStatsDoc: (() => void) | undefined;
+    let unsubOfflineSync: (() => void) | undefined;
 
     async function initUser() {
       if (!user) return;
@@ -119,6 +155,123 @@ export default function App() {
 
       const scholarSessionId = localStorage.getItem("scholar_session_id");
       const effectiveUid = scholarSessionId || user.uid;
+
+      if (getActiveDB() === "supabase") {
+        try {
+          // background auto-login to Supabase Auth to establish correct RLS security context
+          const supabase = getSupabase();
+          if (supabase) {
+            try {
+              const { data: { session } } = await supabase.auth.getSession();
+              if (!session) {
+                const email = user.email || `${effectiveUid}@scholarai.app`;
+                const password = user.email ? `google_auth_${user.uid}` : `scholar_${effectiveUid}`;
+                console.log("[Auth Engine - Router Sync] Autologging into Supabase Auth to establish security context.");
+                
+                let { error: signInErr } = await supabase.auth.signInWithPassword({ email, password });
+                if (signInErr && signInErr.message.includes("Invalid login credentials")) {
+                  // Attempt registration if not present in Auth.users
+                  const { error: signUpErr } = await supabase.auth.signUp({
+                    email,
+                    password,
+                    options: {
+                      data: {
+                        nickname: user.displayName || `Scholar-${effectiveUid.slice(0, 4)}`,
+                        role: (user.email && user.email.toLowerCase().trim() === "arunwarrior98789@gmail.com") ? "owner" : "user"
+                      }
+                    }
+                  });
+                  if (!signUpErr) {
+                    await supabase.auth.signInWithPassword({ email, password });
+                  }
+                }
+              }
+            } catch (authSessionErr: any) {
+              console.warn("[Auth Engine - Router Sync Warning] Supabase background authentication issue:", authSessionErr.message);
+            }
+          }
+
+          // Wrapped in a 5-second connection/query timeout to prevent infinite UI loading states
+          let sUser = await withTimeout(
+            dbService.getUser(effectiveUid),
+            5000,
+            "Supabase connection/user query timed out."
+          );
+
+          let sStats = await withTimeout(
+            dbService.getStats(effectiveUid),
+            5000,
+            "Supabase connection/stats query timed out."
+          );
+
+          if (!sUser) {
+            // First time initialization in Supabase
+            const sUserPayload = {
+              uid: effectiveUid,
+              nickname: user.displayName || `Scholar-${Math.floor(1000 + Math.random() * 9000)}`,
+              email: user.email || "anonymous@scholarai.app",
+              role: (user.email && user.email.toLowerCase().trim() === "arunwarrior98789@gmail.com") ? "owner" : "user",
+              plan: "free",
+              aiRequests: 0,
+              limit: 20,
+              totalTokens: 0,
+              quotaExhausted: false,
+              colorMode: "dark",
+              joinedAt: new Date()
+            };
+            await withTimeout(
+              dbService.saveUser(effectiveUid, sUserPayload),
+              5000,
+              "Supabase save user operation timed out."
+            );
+            sUser = { ...sUserPayload } as any;
+          }
+
+          // If current admin checks owner promotion
+          if (user.email && user.email.toLowerCase().trim() === "arunwarrior98789@gmail.com" && sUser && sUser.role !== "owner") {
+            sUser.role = "owner";
+            await withTimeout(
+              dbService.saveUser(effectiveUid, { role: "owner" }),
+              5000,
+              "Supabase update role operation timed out."
+            );
+          }
+
+          if (!sStats) {
+            const sStatsPayload = {
+              userId: effectiveUid,
+              nickname: sUser?.nickname || "Anonymous Scholar",
+              quizCorrect: 0,
+              totalAttempted: 0,
+              accuracy: 0.0,
+              timeSpent: 0
+            };
+            await withTimeout(
+              dbService.saveStats(effectiveUid, sStatsPayload),
+              5000,
+              "Supabase save stats operation timed out."
+            );
+            sStats = { ...sStatsPayload };
+          }
+
+          if (!isCurrent) return;
+          setUserData({
+            ...sUser,
+            ...sStats,
+            uid: effectiveUid
+          });
+          setDarkMode(sUser.colorMode === "dark" || (sUser as any).color_mode === "dark");
+          setLoading(false);
+          return;
+        } catch (supInitErr: any) {
+          console.warn("Failed initializing user in Supabase mode, falling back to Firestore flow:", supInitErr);
+          setNotification({
+            title: "Database Failover ⚠️",
+            body: `Supabase database timed out or failed to connect (${supInitErr.message || "Timeout"}). Reverting safely to Cloud Firestore flow.`
+          });
+          setActiveDB("firestore"); // Fallback to firestore as required by failover specs
+        }
+      }
 
       const userDocRef = doc(db, "users", effectiveUid);
       try {
@@ -138,84 +291,34 @@ export default function App() {
             uid: user.uid,
             nickname: user.displayName || `Scholar-${Math.floor(1000 + Math.random() * 9000)}`,
             email: user.email || "anonymous@scholarai.app",
+            limit: 20,
             joinedAt: serverTimestamp(),
             colorMode: "dark"
           };
 
-          if (user.email === "arunwarrior98789@gmail.com") {
+          if (user.email && user.email.toLowerCase().trim() === "arunwarrior98789@gmail.com") {
             newData.role = "owner";
           }
 
           try {
             await setDoc(userDocRef, newData);
             
-            await setDoc(doc(db, "stats", user.uid), {
-              userId: user.uid,
+            await setDoc(doc(db, "stats", effectiveUid), {
+              userId: effectiveUid,
               nickname: newData.nickname,
-              quizCorrect: 12,
-              totalAttempted: 15,
-              accuracy: 80.0,
-              timeSpent: 45,
+              quizCorrect: 0,
+              totalAttempted: 0,
+              accuracy: 0.0,
+              timeSpent: 0,
               lastUpdated: serverTimestamp()
             });
-
-            // Seed Topic Progress Points
-            const progressCollection = collection(db, "users", user.uid, "progress");
-            await setDoc(doc(progressCollection, "chemical-reactions-and-equations"), {
-              subject: "Science",
-              topic: "Chemical Reactions and Equations",
-              notesRead: true,
-              quizTaken: true,
-              pyqsViewed: true,
-              lastActivity: serverTimestamp()
-            });
-            await setDoc(doc(progressCollection, "quadratic-equations"), {
-              subject: "Maths",
-              topic: "Quadratic Equations",
-              notesRead: true,
-              quizTaken: false,
-              pyqsViewed: true,
-              lastActivity: serverTimestamp()
-            });
-            await setDoc(doc(progressCollection, "nationalism-in-india"), {
-              subject: "Social Science",
-              topic: "Nationalism in India",
-              notesRead: true,
-              quizTaken: true,
-              pyqsViewed: false,
-              lastActivity: serverTimestamp()
-            });
-
-            // Seed AI Doubt Messages
-            const doubtsCollection = collection(db, "users", user.uid, "doubts");
-            await setDoc(doc(doubtsCollection, "welcome-doubt-1"), {
-              role: "user",
-              content: "How and where can I find the most important concepts for Class 10 Science Board Prep?",
-              timestamp: serverTimestamp()
-            });
-            await setDoc(doc(doubtsCollection, "welcome-doubt-2"), {
-              role: "ai",
-              content: "Hi Scholar! You can find fully comprehensive notes under the Study Guide, generate customized quizzes in the Quiz tab, and view Important Questions complete with PYQs. Focus especially on high-yield topics like $Carbon\\ and\\ its\\ Compounds$ and $Chemical\\ Reactions$ using LaTeX for equations!",
-              timestamp: serverTimestamp()
-            });
-
-            // Seed Study Reminder
-            const remindersCollection = collection(db, "users", user.uid, "reminders");
-            await setDoc(doc(remindersCollection, "study-quadratic-equations"), {
-              topic: "Quadratic Equations practice",
-              subject: "Maths",
-              time: "17:30",
-              date: "2026-05-25",
-              status: "pending",
-              createdAt: serverTimestamp()
-            });
           } catch (createErr) {
-            handleFirestoreError(createErr, OperationType.WRITE, "initial user/stats/seed creation");
+            handleFirestoreError(createErr, OperationType.WRITE, "initial user/stats creation");
           }
         } else {
           // Check if existing user needs promotion
           const data = userDoc.data();
-          if (user.email === "arunwarrior98789@gmail.com" && data?.role !== "owner") {
+          if (user.email && user.email.toLowerCase().trim() === "arunwarrior98789@gmail.com" && data?.role !== "owner") {
             try {
               await setDoc(userDocRef, { role: "owner" }, { merge: true });
             } catch (updateErr) {
@@ -240,8 +343,8 @@ export default function App() {
                   break;
                 }
               }
-              if (!hasChanges) return current;
-              return { ...current, ...newData };
+              if (!hasChanges && current.uid === effectiveUid) return current;
+              return { ...current, ...newData, uid: effectiveUid };
             });
             if (docSnap.data()?.colorMode) {
               setDarkMode(docSnap.data().colorMode === "dark");
@@ -255,6 +358,27 @@ export default function App() {
           if (!isCurrent) return;
           if (docSnap.exists()) {
             const newData = docSnap.data();
+
+            // Auto-clean historical dummy numbers on sandbox load to ensure perfect "fresh clean" start
+            if (newData.quizCorrect === 500 && newData.timeSpent === 9999) {
+              const userRef = doc(db, "users", effectiveUid);
+              const statsRef = doc(db, "stats", effectiveUid);
+              const statsReset = {
+                quizCorrect: 0,
+                totalAttempted: 0,
+                accuracy: 0.0,
+                timeSpent: 0
+              };
+              const userReset = {
+                aiRequests: 0,
+                totalTokens: 0,
+                quotaExhausted: false
+              };
+              setDoc(statsRef, statsReset, { merge: true }).catch(console.error);
+              setDoc(userRef, userReset, { merge: true }).catch(console.error);
+              return;
+            }
+
             setUserData((prev: any) => {
               const current = prev || {};
               let hasChanges = false;
@@ -264,12 +388,56 @@ export default function App() {
                   break;
                 }
               }
-              if (!hasChanges) return current;
-              return { ...current, ...newData };
+              if (!hasChanges && current.uid === effectiveUid) return current;
+              return { ...current, ...newData, uid: effectiveUid };
             });
           }
         }, (error) => {
           handleFirestoreError(error, OperationType.GET, `stats/${effectiveUid}`);
+        });
+
+        // 3. Realtime listening for elements generated by the Discord bot to sync to local web storage 
+        const offlineSyncColRef = collection(db, "users", effectiveUid, "offline_sync");
+        unsubOfflineSync = onSnapshot(offlineSyncColRef, (snapshot) => {
+          if (!isCurrent) return;
+          snapshot.docChanges().forEach((change) => {
+            if (change.type === "added" || change.type === "modified") {
+              const item = change.doc.data();
+              const assetType = item.type || "";
+              const subject = item.subject || "";
+              const topic = item.topic || "";
+              const content = item.content || "";
+              
+              if (!subject || !topic) return;
+
+              let hasSynced = false;
+
+              if (assetType === "notes") {
+                saveNotesToCache(subject, topic, item.notesType || "one-page", content);
+                hasSynced = true;
+              } else if (assetType === "quiz") {
+                const questions = item.questions || item.items || [];
+                saveQuizToCache(subject, topic, item.difficulty || "Medium", questions.length || 3, questions);
+                hasSynced = true;
+              } else if (assetType === "flashcards") {
+                const flashcards = item.flashcards || item.items || [];
+                saveFlashcardsToCache(subject, topic, flashcards);
+                hasSynced = true;
+              } else if (assetType === "pyqs" || assetType === "imps") {
+                saveImpsToCache(subject, topic, content);
+                hasSynced = true;
+              }
+
+              if (hasSynced) {
+                setNotification({
+                  title: "Bot Sync Active! ⚡",
+                  body: `Successfully synced "${topic}" (${assetType.toUpperCase()}) from Discord to your offline library.`
+                });
+              }
+            }
+          });
+        }, (err) => {
+          console.warn("Realtime offline sync snapshot subscription warning:", err);
         });
         
         setLoading(false);
@@ -291,8 +459,9 @@ export default function App() {
       isCurrent = false;
       if (unsubUserDoc) unsubUserDoc();
       if (unsubStatsDoc) unsubStatsDoc();
+      if (unsubOfflineSync) unsubOfflineSync();
     };
-  }, [user?.uid]);
+  }, [user?.uid, dbTrigger]);
 
   useEffect(() => {
     if (darkMode) {
@@ -419,7 +588,35 @@ export default function App() {
       try {
         setLoading(true);
         localStorage.removeItem("scholar_session_id");
-        await signInWithPopup(auth, googleProvider);
+        const userCredential = await signInWithPopup(auth, googleProvider);
+        const fUser = userCredential.user;
+
+        // Unified Session Mirror Copy & Dynamic Auth Routing
+        if (getActiveDB() === "supabase" && fUser && fUser.email) {
+          const supabase = getSupabase();
+          if (supabase) {
+            const email = fUser.email;
+            const password = `google_auth_${fUser.uid}`;
+            console.log("[Auth Engine] Syncing Google credentials to Supabase Auth Engine");
+
+            let { error: sError } = await supabase.auth.signInWithPassword({ email, password });
+            if (sError && sError.message.includes("Invalid login credentials")) {
+              const { error: signUpErr } = await supabase.auth.signUp({
+                email,
+                password,
+                options: {
+                  data: {
+                    nickname: fUser.displayName || "Google Scholar",
+                    role: "user"
+                  }
+                }
+              });
+              if (!signUpErr) {
+                await supabase.auth.signInWithPassword({ email, password });
+              }
+            }
+          }
+        }
       } catch (err: any) {
         console.error("Google Login Error:", err);
         setError("Google Login failed. " + (err.message || ""));
@@ -429,7 +626,7 @@ export default function App() {
     }} />;
   }
 
-  const isDevUser = userData?.role === "owner" || userData?.role === "admin" || userData?.role === "developer" || userData?.email === "arunwarrior98789@gmail.com" || auth.currentUser?.email === "arunwarrior98789@gmail.com";
+  const isDevUser = userData?.role === "owner" || userData?.role === "admin" || userData?.role === "developer" || userData?.email?.toLowerCase().trim() === "arunwarrior98789@gmail.com" || auth.currentUser?.email?.toLowerCase().trim() === "arunwarrior98789@gmail.com";
 
   if (maintenanceMode && !isDevUser) {
     return (
@@ -464,6 +661,7 @@ export default function App() {
     { id: "pyq", label: "Board Prep", icon: Star },
     { id: "duel", label: "AI Duel", icon: Gamepad2 },
     { id: "reminders", label: "Focus Pulse", icon: Bell },
+    { id: "tickets", label: "Support Tickets", icon: LifeBuoy },
     { id: "settings", label: "Settings", icon: SettingsIcon },
     ...(isDevUser ? [{ id: "developer", label: "Developer", icon: Terminal }] : []),
   ];
@@ -613,6 +811,7 @@ export default function App() {
                 {activeTab === "pyq" && <ImportantQuestions userData={userData} />}
                 {activeTab === "duel" && <TicTacToe />}
                 {activeTab === "reminders" && <StudyReminders />}
+                {activeTab === "tickets" && <TicketSystem userData={userData} />}
                 {activeTab === "settings" && <Settings userData={userData} />}
                 {activeTab === "developer" && isDevUser && <DeveloperPage userData={userData} />}
               </Suspense>

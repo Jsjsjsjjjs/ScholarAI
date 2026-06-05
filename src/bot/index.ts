@@ -6,11 +6,51 @@ import { allEvents } from './events/index.js';
 
 dotenv.config();
 
+export const botRuntimeLogs: string[] = [`[System] Logger initialized. Timestamp: ${new Date().toISOString()}`];
+export let lastBotError: string | null = null;
+
+export const getBotRunStats = () => {
+  return {
+    logs: [...botRuntimeLogs],
+    error: lastBotError
+  };
+};
+
+export function addBotLog(message: string) {
+  const timestamp = new Date().toLocaleTimeString('en-US', { hour12: false });
+  const entry = `[${timestamp}] ${message}`;
+  botRuntimeLogs.push(entry);
+  if (botRuntimeLogs.length > 100) {
+    botRuntimeLogs.shift();
+  }
+  console.log(`[BOT-LOG] ${entry}`);
+}
+
 export const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
   ]
+});
+
+// Attach event listeners for debug, logs, error status tracking
+client.on('ready', () => {
+  addBotLog(`🟢 Bot successfully authenticated! Connected as: ${client.user?.tag} (${client.user?.id})`);
+  lastBotError = null;
+});
+
+client.on('error', (err) => {
+  lastBotError = err.message || String(err);
+  addBotLog(`❌ CLIENT ERROR EVENT: ${lastBotError}`);
+});
+
+client.on('shardError', (err) => {
+  lastBotError = err.message || String(err);
+  addBotLog(`🔸 SHARD ERROR: ${lastBotError}`);
+});
+
+client.on('warn', (warning) => {
+  addBotLog(`⚠️ WARNING EVENT: ${warning}`);
 });
 
 // Extend Client to store commands
@@ -22,13 +62,25 @@ const customClient = client as CustomClient;
 customClient.commands = new Collection();
 
 export async function initDiscordBot() {
-  const token = process.env.DISCORD_BOT_TOKEN;
+  let token = process.env.DISCORD_BOT_TOKEN || "";
+  // Aggressively strip any accidental surrounding quotes, whitespace, and invisible unicode characters
+  token = token.replace(/[\s\r\n\t"'`\u200B-\u200D\uFEFF]/g, '');
+  
+  const clientIdFromEnv = process.env.DISCORD_CLIENT_ID?.trim();
+  lastBotError = null;
+
   if (!token) {
-    console.warn("DISCORD_BOT_TOKEN is not defined. Discord bot will not start.");
+    const err = "DISCORD_BOT_TOKEN environment variable not set or is empty.";
+    lastBotError = err;
+    addBotLog(`❌ ERROR: ${err}`);
     return;
   }
+  
+  const maskedToken = `${token.substring(0, 5)}...${token.substring(token.length - 4)}`;
+  addBotLog(`Starting bot login sequence... (Token format check: length=${token.length}, masked=${maskedToken})`);
 
   // Load Events
+  addBotLog(`Loading ${allEvents.length} event subscribers...`);
   for (const event of allEvents) {
     if (event.once) {
       customClient.once(event.name, (...args) => event.execute(...args, customClient));
@@ -39,11 +91,12 @@ export async function initDiscordBot() {
   }
 
   // Load Commands
+  addBotLog(`Loading ${allCommands.length} command modules...`);
   for (const command of allCommands) {
     if (command && 'data' in command && 'execute' in command) {
       customClient.commands.set(command.data.name, command);
     } else {
-      console.warn(`[WARNING] A command is missing a required "data" or "execute" property.`);
+      addBotLog(`⚠️ Warning: command missing "data" or "execute" properties.`);
     }
   }
 
@@ -63,11 +116,27 @@ export async function initDiscordBot() {
   });
 
   try {
+    addBotLog("Invoking client.login()...");
     await customClient.login(token);
-    console.log('Discord Bot logging in...');
-    await deployCommands();
-  } catch (error) {
-    console.error('Failed to log in Discord bot:', error);
+    addBotLog("client.login() handshake completed.");
+    
+    // Commands deployment
+    const clientId = clientIdFromEnv;
+    if (!clientId) {
+      addBotLog("⚠️ DISCORD_CLIENT_ID not found in env. Skipping command deployment.");
+    } else {
+      addBotLog(`Deploying commands for Application ID ${clientId}...`);
+      await deployCommands();
+      addBotLog("Commands deploy script finished.");
+    }
+  } catch (error: any) {
+    lastBotError = error?.message || String(error);
+    let hint = "";
+    if (lastBotError.includes("TokenInvalid")) {
+      hint = " HINT: Discord rejected this connection. Ensure you copied the 'Token' from the 'Bot' tab, NOT the 'Client Secret' from 'OAuth2'. If it is the correct Bot Token, it may have been auto-revoked by Discord and needs to be Reset/Regenerated.";
+    }
+    addBotLog(`❌ FATAL LOGIN ERROR: ${lastBotError} ${hint}`);
+    console.warn(`[Discord Bot] Failed to log in: ${lastBotError}`);
   }
 }
 

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { db, handleFirestoreError, OperationType } from "../lib/firebase";
 import { collection, query, orderBy, limit, onSnapshot } from "firebase/firestore";
+import { dbService, getActiveDB } from "../lib/dbService";
 import { 
   Trophy, 
   Target, 
@@ -33,7 +34,7 @@ export default function Dashboard({ userData, user }: { userData: any, user: any
   const [clearStatus, setClearStatus] = useState<string | null>(null);
   const [isClearing, setIsClearing] = useState(false);
 
-  const isAdminUser = user?.email === "arunwarrior98789@gmail.com" || userData?.role === "owner" || userData?.role === "admin";
+  const isAdminUser = (user?.email && user.email.toLowerCase().trim() === "arunwarrior98789@gmail.com") || userData?.role === "owner" || userData?.role === "admin";
 
   const handleClearLeaderboard = async () => {
     setIsClearing(true);
@@ -58,6 +59,14 @@ export default function Dashboard({ userData, user }: { userData: any, user: any
   };
 
   useEffect(() => {
+    if (getActiveDB() === "supabase") {
+      dbService.getLeaderboard().then((data: any[]) => {
+        const sorted = [...data].sort((a, b) => (b.quizCorrect || 0) - (a.quizCorrect || 0));
+        setLeaderboard(sorted.slice(0, 5));
+      }).catch(console.error);
+      return;
+    }
+
     const q = query(collection(db, "stats"), orderBy("quizCorrect", "desc"), limit(10));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
@@ -75,6 +84,19 @@ export default function Dashboard({ userData, user }: { userData: any, user: any
     const scholarSessionId = localStorage.getItem("scholar_session_id");
     const activeUid = scholarSessionId || user?.uid;
     if (!activeUid) return;
+
+    if (getActiveDB() === "supabase") {
+      dbService.getProgress(activeUid).then((data: any[]) => {
+        const sorted = [...data].sort((a, b) => {
+          const timeA = a.lastActivity ? new Date(a.lastActivity).getTime() : 0;
+          const timeB = b.lastActivity ? new Date(b.lastActivity).getTime() : 0;
+          return timeB - timeA;
+        });
+        setProgress(sorted.slice(0, 5));
+      }).catch(console.error);
+      return;
+    }
+
     const progressQ = query(
       collection(db, "users", activeUid, "progress"),
       orderBy("lastActivity", "desc"),

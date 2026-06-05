@@ -8,6 +8,7 @@ import { cn } from "../lib/utils";
 import { auth, db, serverTimestamp, handleFirestoreError, OperationType, trackAIUsage } from "../lib/firebase";
 import { collection, addDoc, query, orderBy, onSnapshot, limit } from "firebase/firestore";
 import { solveDoubt as clientSolveDoubt } from "../lib/gemini";
+import { dbMirror } from "../lib/supabase";
 
 export default function DoubtSolver() {
   const [isOpen, setIsOpen] = useState(false);
@@ -102,6 +103,10 @@ export default function DoubtSolver() {
         handleFirestoreError(fErr, OperationType.WRITE, `users/${activeUid}/doubts`);
       }
 
+      // Mirror complete resolved QA pair to Supabase
+      const generatedDoubtId = `doubt_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      dbMirror.mirrorDoubtSave(activeUid, generatedDoubtId, userMsg, answer).catch(console.error);
+
       setImage(null);
     } catch (err: any) {
       console.error("Solve doubt error:", err);
@@ -119,6 +124,14 @@ export default function DoubtSolver() {
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      if (!file.type.startsWith('image/')) {
+        alert('Please select a valid image file.');
+        return;
+      }
+      if (file.size > 5 * 1024 * 1024) { // 5MB limit
+        alert('Image size must be less than 5MB.');
+        return;
+      }
       const reader = new FileReader();
       reader.onloadend = () => {
         setImage(reader.result as string);

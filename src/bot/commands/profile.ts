@@ -1,6 +1,5 @@
 import { safeReply } from '../utils/responses.js';
 import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
-import { fetchDocSafe, resolveScholarId } from '../utils/firestore.js';
 
 export default {
   data: new SlashCommandBuilder()
@@ -17,6 +16,9 @@ export default {
         .setRequired(false)
     ),
   async execute(interaction: any) {
+    // Lazy load logic to prevent circular dependencies
+    const { fetchDocSafe, resolveScholarId } = await import('../utils/firestore.js');
+
     // 1. Defer the interaction since database queries can exceed the 3-second threshold
     await interaction.deferReply();
 

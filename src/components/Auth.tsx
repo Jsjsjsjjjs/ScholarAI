@@ -3,6 +3,8 @@ import { motion, AnimatePresence } from "motion/react";
 import { BrainCircuit, GraduationCap, ArrowRight, UserCircle } from "lucide-react";
 import { auth, signInAnonymously, db, serverTimestamp } from "../lib/firebase";
 import { doc, setDoc, getDoc } from "firebase/firestore";
+import { getActiveDB } from "../lib/dbService";
+import { getSupabase } from "../lib/supabase";
 
 export default function Auth({ onLogin }: { onLogin: () => void }) {
   const [mode, setMode] = useState<"google" | "scholar">("google");
@@ -18,19 +20,55 @@ export default function Auth({ onLogin }: { onLogin: () => void }) {
     setLoading(true);
     setError(null);
     try {
-      // 1. Dynamic Database Verification: Query the users collection first to verify if that specific ID exists
+      const activeDb = getActiveDB();
+      if (activeDb === "supabase") {
+        const supabase = getSupabase();
+        if (supabase) {
+          const email = `${scholarId}@scholarai.app`;
+          const password = `scholar_${scholarId}`;
+          console.log("[Auth Engine] Routing Scholar ID registration & sign-in directly to Supabase Auth");
+
+          let { error: sError } = await supabase.auth.signInWithPassword({ email, password });
+          if (sError && sError.message.includes("Invalid login credentials")) {
+            // Register Scholar User inside Supabase Authentication Engine natively
+            const { error: signUpErr } = await supabase.auth.signUp({
+              email,
+              password,
+              options: {
+                data: {
+                  nickname: `Scholar-${scholarId}`,
+                  role: "user"
+                }
+              }
+            });
+            if (signUpErr) {
+              throw signUpErr;
+            }
+            // Complete session sign-in
+            const retryRes = await supabase.auth.signInWithPassword({ email, password });
+            if (retryRes.error) throw retryRes.error;
+          } else if (sError) {
+            throw sError;
+          }
+        }
+      }
+
+      // 1. Authenticate anonymously first to establish secure access to Firestore rules
+      const userCredential = await signInAnonymously(auth);
+      
+      // 2. Query the users collection under the active auth context
       const userDocRef = doc(db, "users", scholarId);
       const userDocSnap = await getDoc(userDocRef);
       
-      if (!userDocSnap.exists()) {
+      if (activeDb !== "supabase" && !userDocSnap.exists()) {
         setError("Invalid Scholar ID. Please check your credentials.");
+        await auth.signOut();
         setLoading(false);
         return;
       }
       
-      // 2. Accurate Profile Hydration: Set the active session ID, then sign in anonymously (to authorize Firebase rules)
+      // 3. Accurate Profile Hydration: Set the active session ID
       localStorage.setItem("scholar_session_id", scholarId);
-      await signInAnonymously(auth);
     } catch (err: any) {
       console.error(err);
       if (err.code === "auth/admin-restricted-operation") {

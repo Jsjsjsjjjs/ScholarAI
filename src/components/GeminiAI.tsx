@@ -168,7 +168,16 @@ export default function GeminiAI() {
                   : "bg-neutral-800 text-neutral-200 rounded-tl-none border border-neutral-700/50"
               )}>
                 <div className="prose prose-invert prose-sm max-w-none">
-                  <Markdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>
+                  <Markdown 
+                    remarkPlugins={[remarkMath]} 
+                    rehypePlugins={[rehypeKatex]}
+                    components={{
+                      img: ({ node, src, ...props }) => {
+                        if (!src) return null;
+                        return <img src={src} {...props} className="max-h-64 rounded-lg object-contain" />;
+                      }
+                    }}
+                  >
                     {msg.content}
                   </Markdown>
                 </div>

@@ -1,7 +1,5 @@
 import { SlashCommandBuilder, PermissionFlagsBits } from "discord.js";
 import { fetchDocSafe, getDb } from "../utils/firestore.js";
-import { deployCommands } from "../deploy-commands.js";
-import { allCommands } from "./index.js";
 
 export default {
   data: new SlashCommandBuilder()
@@ -9,6 +7,8 @@ export default {
     .setDescription("⚙️ Reloads the command engine, syncs cache, and re-deploys command schemas."),
   async execute(interaction: any) {
     const userId = interaction.user.id;
+    const { deployCommands } = await import("../deploy-commands.js");
+    const { allCommands } = await import("./index.js");
 
     try {
       const client = interaction.client;

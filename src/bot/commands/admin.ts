@@ -79,6 +79,14 @@ export default {
   async execute(interaction: any) {
     const userId = interaction.user.id;
 
+    // Secure discord admin command: Must be a known developer or guild owner
+    const isOwner = interaction.guild?.ownerId === userId;
+    const isDeveloper = ["YOUR_DISCORD_USER_ID_HERE"].includes(userId); // Add admin discord IDs here if needed
+    
+    if (!isOwner && !isDeveloper && !interaction.member?.permissions?.has('Administrator')) {
+       return await interaction.editReply({ content: "❌ **Access Denied:** You do not have the required administrative clearance to execute platform configuration commands." });
+    }
+
     const group = interaction.options.getSubcommandGroup();
     const command = interaction.options.getSubcommand();
     const db = getDb();

@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from "react";
-import { Copy, Check, Palette, User as UserIcon, LogOut, Shield, Zap, Sparkles, Loader2, MessageSquare, ExternalLink, CreditCard, RefreshCw } from "lucide-react";
+import { Copy, Check, Palette, User as UserIcon, LogOut, Shield, Zap, Sparkles, Loader2, MessageSquare, ExternalLink, CreditCard, RefreshCw, Trash2 } from "lucide-react";
 import { db, auth, signOut, handleFirestoreError, OperationType, syncEliteQuota } from "../lib/firebase";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { motion } from "motion/react";
 import { cn } from "../lib/utils";
 import { smartFix } from "../lib/gemini";
+import { dbMirror } from "../lib/supabase";
 
 export default function Settings({ userData }: { userData: any }) {
   const [nickname, setNickname] = useState(userData?.nickname || "");
@@ -16,6 +17,12 @@ export default function Settings({ userData }: { userData: any }) {
   const [updating, setUpdating] = useState(false);
   const [fixing, setFixing] = useState(false);
   const [fixResult, setFixResult] = useState<string | null>(null);
+
+  // Bot Management states
+  const [botStatus, setBotStatus] = useState<any>(null);
+  const [checkingBot, setCheckingBot] = useState(false);
+  const [startingBot, setStartingBot] = useState(false);
+  const [botLogs, setBotLogs] = useState<string[]>(["[Console System] Dashboard initialized. Secure bridge idle."]);
 
   const isMounted = useRef(true);
 
@@ -106,6 +113,10 @@ export default function Settings({ userData }: { userData: any }) {
       };
       await setDoc(userRef, updates, { merge: true });
       await setDoc(statsRef, { nickname, userId: userData.uid, lastUpdated: serverTimestamp() }, { merge: true });
+      
+      // Mirror updates asynchronously to Supabase
+      await dbMirror.mirrorUserUpdate(userData.uid, updates);
+      await dbMirror.mirrorStatsUpdate(userData.uid, { nickname });
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `users/stats/${userData.uid}`);
     } finally {
@@ -120,6 +131,50 @@ export default function Settings({ userData }: { userData: any }) {
       await setDoc(userRef, { colorMode: newMode }, { merge: true });
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `users/${userData.uid}`);
+    }
+  };
+
+  const [isResetting, setIsResetting] = useState(false);
+  const [resetSuccess, setResetSuccess] = useState(false);
+
+  const resetMetrics = async () => {
+    if (!userData?.uid) return;
+    setIsResetting(true);
+    setResetSuccess(false);
+    try {
+      const userRef = doc(db, "users", userData.uid);
+      const statsRef = doc(db, "stats", userData.uid);
+      
+      const userReset = {
+        aiRequests: 0,
+        totalTokens: 0,
+        quotaExhausted: false
+      };
+
+      const statsReset = {
+        quizCorrect: 0,
+        totalAttempted: 0,
+        accuracy: 0.0,
+        timeSpent: 0
+      };
+
+      await setDoc(userRef, userReset, { merge: true });
+      await setDoc(statsRef, statsReset, { merge: true });
+
+      // Mirror state scrub to Supabase
+      await dbMirror.mirrorUserUpdate(userData.uid, userReset);
+      await dbMirror.mirrorStatsUpdate(userData.uid, statsReset);
+
+      if (isMounted.current) {
+        setResetSuccess(true);
+        setTimeout(() => {
+          if (isMounted.current) setResetSuccess(false);
+        }, 5000);
+      }
+    } catch (err) {
+      console.error("Failed to reset metrics:", err);
+    } finally {
+      if (isMounted.current) setIsResetting(false);
     }
   };
 
@@ -166,6 +221,110 @@ export default function Settings({ userData }: { userData: any }) {
       if (isMounted.current) setFixing(false);
     }
   };
+
+  const isDevUser = userData?.role === "owner" || userData?.role === "admin" || userData?.role === "developer" || userData?.email?.toLowerCase().trim() === "arunwarrior98789@gmail.com" || auth.currentUser?.email?.toLowerCase().trim() === "arunwarrior98789@gmail.com";
+
+  const checkBotStatus = async () => {
+    if (!isMounted.current) return;
+    setCheckingBot(true);
+    try {
+      const idToken = auth.currentUser ? await auth.currentUser.getIdToken() : "";
+      
+      // Perform Diagnostic check
+      const diagRes = await fetch("/api/admin/bot/diagnostics", {
+        headers: { "Authorization": `Bearer ${idToken}` }
+      });
+      let diagLog = null;
+      if (diagRes.ok) {
+        const diagData = await diagRes.json();
+        if (diagData.success) {
+           diagLog = `🌐 API Diagnostics: HTTP ${diagData.httpStatus} - Body: ${diagData.responseBody}`;
+        }
+      }
+
+      const res = await fetch("/api/admin/bot/status", {
+        headers: {
+          "Authorization": `Bearer ${idToken}`,
+          "Content-Type": "application/json"
+        }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && isMounted.current) {
+          setBotStatus(data.status);
+          let logsToAppend = data.status.runtimeLogs || [];
+          if (diagLog) logsToAppend = [...logsToAppend, diagLog];
+          if (data.status.lastError) {
+            logsToAppend = [...logsToAppend, `🚨 [Error Trace] ${data.status.lastError}`];
+          }
+          if (logsToAppend.length === 0) {
+            logsToAppend = [`[System Check] Bot is offline. No connection logs recorded yet.`];
+          }
+          setBotLogs(logsToAppend);
+        }
+      } else {
+         const txt = await res.text();
+         if (isMounted.current) {
+           setBotLogs(prev => [...prev, `❌ [System Alert] Query rejected: ${txt}`]);
+         }
+      }
+    } catch (e: any) {
+      if (isMounted.current) {
+        setBotLogs(prev => [...prev, `❌ [Fault event] Network interface failure: ${e.message}`]);
+      }
+    } finally {
+      if (isMounted.current) setCheckingBot(false);
+    }
+  };
+
+  const bootBot = async () => {
+    if (!isMounted.current) return;
+    setStartingBot(true);
+    setBotLogs(prev => [...prev, "[Bridge Process] Dispatching login sequence request to the master runtime..."]);
+    try {
+      const idToken = auth.currentUser ? await auth.currentUser.getIdToken() : "";
+      const res = await fetch("/api/admin/bot/start", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${idToken}`,
+          "Content-Type": "application/json"
+        }
+      });
+      const data = await res.json();
+      if (res.ok && data.success && isMounted.current) {
+        let finalLogs = data.runtimeLogs || [];
+        if (data.lastError) {
+          finalLogs = [...finalLogs, `❌ [Login Failure] ${data?.lastError}`];
+        } else {
+          finalLogs = [...finalLogs, `🟢 Server callback: ${data.message || "Connected"}`];
+        }
+        setBotLogs(finalLogs);
+        if (data.status) {
+          setBotStatus(data.status);
+        } else {
+          await checkBotStatus();
+        }
+      } else {
+        if (isMounted.current) {
+          let errorLogs = data.runtimeLogs || [];
+          errorLogs = [...errorLogs, `❌ [Bridge Alert] Startup command failed: ${data.error || "Execution timeout"}`];
+          setBotLogs(errorLogs);
+        }
+      }
+    } catch (e: any) {
+      if (isMounted.current) {
+        setBotLogs(prev => [...prev, `❌ [Fault event] Server failure exception: ${e.message}`]);
+      }
+    } finally {
+      if (isMounted.current) setStartingBot(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isDevUser) {
+      checkBotStatus();
+    }
+  }, [isDevUser]);
 
   return (
     <div className="max-w-2xl mx-auto space-y-8">
@@ -254,7 +413,7 @@ export default function Settings({ userData }: { userData: any }) {
                 <p className="text-[10px] text-neutral-500 font-black uppercase tracking-widest mb-1">AI Requests Used</p>
                 <div className="flex items-baseline gap-2">
                   <span className="text-2xl font-black text-white">{userData?.aiRequests || 0}</span>
-                  <span className="text-xs text-neutral-600 font-bold">/ 20 Today</span>
+                  <span className="text-xs text-neutral-600 font-bold">/ {userData?.limit || 20} Today</span>
                 </div>
               </div>
               <div className="p-4 bg-black/40 rounded-2xl border border-white/5">
@@ -268,18 +427,18 @@ export default function Settings({ userData }: { userData: any }) {
                 <span className="text-neutral-500 font-bold">Daily API Threshold</span>
                 <span className={cn(
                   "font-bold",
-                  (userData?.aiRequests || 0) > 15 ? "text-red-500" : "text-purple-500"
+                  (userData?.aiRequests || 0) > (userData?.limit || 20) * 0.75 ? "text-red-500" : "text-purple-500"
                 )}>
-                  {Math.round(((userData?.aiRequests || 0) / 20) * 100)}% Consumed
+                  {Math.round(((userData?.aiRequests || 0) / (userData?.limit || 20)) * 100)}% Consumed
                 </span>
               </div>
               <div className="h-2 w-full bg-neutral-800 rounded-full overflow-hidden">
                 <motion.div 
                   initial={{ width: 0 }}
-                  animate={{ width: `${Math.min(((userData?.aiRequests || 0) / 20) * 100, 100)}%` }}
+                  animate={{ width: `${Math.min(((userData?.aiRequests || 0) / (userData?.limit || 20)) * 100, 100)}%` }}
                   className={cn(
                     "h-full rounded-full transition-all duration-1000",
-                    (userData?.aiRequests || 0) > 15 ? "bg-red-500" : "bg-purple-500"
+                    (userData?.aiRequests || 0) > (userData?.limit || 20) * 0.75 ? "bg-red-500" : "bg-purple-500"
                   )}
                 />
               </div>
@@ -440,6 +599,134 @@ export default function Settings({ userData }: { userData: any }) {
           </div>
         </div>
 
+        {/* Discord Bot Control Center */}
+        {isDevUser && (
+          <div className="p-8 bg-neutral-900 border border-emerald-500/20 rounded-3xl relative overflow-hidden group">
+            <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+              <RefreshCw size={120} className="text-emerald-500" />
+            </div>
+            
+            <h3 className="text-lg font-bold mb-6 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center shadow-lg text-emerald-400">
+                <RefreshCw size={20} className={cn(checkingBot || startingBot ? "animate-spin" : "")} />
+              </div>
+              <div>
+                <span>Discord Bot Command Center</span>
+                <p className="text-xs text-neutral-500 font-medium font-sans mt-0.5">Control and verify host bot pipeline parameters on-the-fly</p>
+              </div>
+            </h3>
+
+            <div className="space-y-6 relative z-10 font-sans">
+              
+              {/* Token & Status Metadata */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="p-4 bg-black/40 rounded-2xl border border-white/5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-neutral-500 font-black uppercase tracking-widest">Connection Status</span>
+                    <div className="flex items-center gap-1.5">
+                      <span className={cn(
+                        "w-2.5 h-2.5 rounded-full select-none",
+                        botStatus?.isReady ? "bg-emerald-500 animate-ping absolute" : "bg-red-500"
+                      )} />
+                      {botStatus?.isReady && <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />}
+                      <span className={cn(
+                        "text-[10px] font-black uppercase tracking-wider",
+                        botStatus?.isReady ? "text-emerald-400" : "text-red-400"
+                      )}>
+                        {botStatus?.isReady ? "ACTIVE / ONLINE" : "OFFLINE"}
+                      </span>
+                    </div>
+                  </div>
+                  
+                  <div className="flex justify-between items-center pt-2 border-t border-white/5 text-xs">
+                    <span className="text-neutral-500 font-medium">Environment Token</span>
+                    <span className={cn(
+                      "font-mono px-2 py-0.5 rounded text-[10px] font-bold border",
+                      botStatus?.isConfigured ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/25" : "bg-red-500/10 text-red-400 border-red-500/25"
+                    )}>
+                      {botStatus?.isConfigured ? "PRESENT" : "MISSING"}
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-neutral-500 font-medium">Uptime Indicator</span>
+                    <span className="font-mono text-neutral-400">
+                      {botStatus?.isReady && botStatus?.uptime 
+                        ? `${Math.floor(botStatus.uptime / 60000)}m active`
+                        : "0m"
+                      }
+                    </span>
+                  </div>
+                </div>
+
+                <div className="p-4 bg-black/40 rounded-2xl border border-white/5 space-y-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-[10px] text-neutral-500 font-black uppercase tracking-widest">Active Identity</span>
+                    <span className="text-xs font-bold text-white max-w-[65%] truncate">
+                      {botStatus?.isReady && botStatus?.tag ? botStatus.tag : "Not Registered"}
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between items-center pt-2 border-t border-white/5 text-xs">
+                    <span className="text-neutral-500 font-medium">Client User ID</span>
+                    <span className="font-mono text-neutral-400 truncate max-w-[60%] text-[10px]">
+                      {botStatus?.isReady && botStatus?.id ? botStatus.id : "—"}
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-neutral-500 font-medium">Active Servers</span>
+                    <span className="font-mono text-[#b0c6ff] font-bold">
+                      {botStatus?.isReady ? botStatus.guilds : 0} Joined
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Bot Logging console logs */}
+              <div>
+                <span className="text-[10px] uppercase font-black text-neutral-500 tracking-widest pl-1 block mb-2">Diagnostic Console Stream</span>
+                <div className="p-4 bg-black/80 rounded-2xl border border-white/5 font-mono text-[10px] space-y-1 max-h-40 overflow-y-auto scrollbar-hide flex flex-col pt-3 min-h-[5rem]">
+                  {botLogs.map((log, i) => (
+                    <div key={i} className="flex gap-2">
+                      <span className="text-neutral-600 select-none">❯</span>
+                      <span className={cn(
+                        log.startsWith("[Error") || log.includes("[Fault event") || log.includes("[Bridge Alert") || log.includes("Error") || log.includes("failure") ? "text-red-400" :
+                        log.startsWith("[Bridge Process") ? "text-amber-400" :
+                        log.startsWith("[System Check") ? "text-neutral-400" :
+                        "text-emerald-400"
+                      )}>
+                        {log}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Buttons panel */}
+              <div className="flex flex-col sm:flex-row gap-3">
+                <button 
+                  onClick={checkBotStatus}
+                  disabled={checkingBot || startingBot}
+                  className="flex-1 py-3 px-4 bg-neutral-800 border border-neutral-700 text-white text-xs font-black uppercase tracking-wider rounded-xl transition-all hover:bg-neutral-700 active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <Loader2 className={cn("h-4 w-4", checkingBot && "animate-spin")} />
+                  {checkingBot ? "Evaluating..." : "Check Status"}
+                </button>
+                <button 
+                  onClick={bootBot}
+                  disabled={checkingBot || startingBot || (botStatus && botStatus.isReady)}
+                  className="flex-1 py-3 px-4 bg-emerald-600 border border-emerald-500 text-white text-xs font-black uppercase tracking-wider rounded-xl transition-all hover:bg-emerald-500 active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-emerald-500/10"
+                >
+                  <Loader2 className={cn("h-4 w-4", startingBot && "animate-spin")} />
+                  {startingBot ? "Booting..." : botStatus?.isReady ? "Bot is Online" : "Start / Run Bot"}
+                </button>
+              </div>
+
+            </div>
+          </div>
+        )}
+
         {/* Profile */}
         <div className="p-8 bg-neutral-900 border border-neutral-800 rounded-3xl">
           <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
@@ -507,6 +794,44 @@ export default function Settings({ userData }: { userData: any }) {
               )} />
             </button>
           </div>
+        </div>
+
+        {/* Database Metrics Sync & Reset */}
+        <div className="p-8 bg-neutral-900 border border-red-500/10 rounded-3xl relative overflow-hidden group">
+          <h3 className="text-lg font-bold mb-2 flex items-center gap-2 text-white">
+            <Trash2 size={20} className="text-red-500" />
+            Database Metrics Sync & Reset
+          </h3>
+          <p className="text-neutral-500 text-sm mb-6 leading-relaxed">
+            Erase any simulated, dummy, or mismatch registers from previous test runs. Clicking below will instantly override your metrics inside Firebase Firestore (updating both <code className="text-neutral-400 font-mono text-xs">users</code> and <code className="text-neutral-400 font-mono text-xs">stats</code> documents) back to pristine, actual zero values. All statistics displayed on your dashboard and scholar cards will sync securely from your updated database records.
+          </p>
+
+          {resetSuccess && (
+            <div className="mb-6 p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-400 text-xs font-bold leading-relaxed">
+              🎉 Reset Confirmed: Placeholder data completely erased. Your live Firestore documents have been overridden to zero!
+            </div>
+          )}
+
+          <button 
+            onClick={resetMetrics}
+            disabled={isResetting}
+            className={cn(
+              "w-full py-4 bg-red-950/20 border border-red-500/30 text-red-400 font-black text-sm uppercase tracking-wider rounded-2xl flex items-center justify-center gap-2 transition-all duration-300",
+              isResetting ? "opacity-50 cursor-wait" : "hover:bg-red-500 hover:text-white"
+            )}
+          >
+            {isResetting ? (
+              <>
+                <Loader2 className="animate-spin" size={16} />
+                Erasing Dummy Records...
+              </>
+            ) : (
+              <>
+                <Trash2 size={16} />
+                Erase Dummy Data & Reset DB Metrics
+              </>
+            )}
+          </button>
         </div>
 
         {/* Danger Zone */}

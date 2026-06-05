@@ -3,33 +3,43 @@ import { GoogleGenAI, Type } from "@google/genai";
 // WARNING: Handling API keys client-side has security implications as keys are exposed to the browser.
 // This refactoring has been performed per explicit user request to support client-only deployments.
 const getEnvironmentKey = () => {
+  let val = undefined;
   try {
     if (typeof process !== "undefined" && process.env) {
-      return process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+      val = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
     }
   } catch (e) {}
-  try {
-    if (typeof import.meta !== "undefined" && (import.meta as any).env) {
-      return (import.meta as any).env.VITE_GEMINI_API_KEY;
-    }
-  } catch (e) {}
-  return undefined;
+  if (!val) {
+    try {
+      if (typeof import.meta !== "undefined" && (import.meta as any).env) {
+        val = (import.meta as any).env.VITE_GEMINI_API_KEY;
+      }
+    } catch (e) {}
+  }
+  
+  if (val) {
+    return val.split(',').map(k => k.trim()).filter(Boolean);
+  }
+  return [];
 };
 
 const GEMINI_API_KEYS = [
-  getEnvironmentKey(),
-  "AIzaSyAf-esDwLLnA7HWxnsV4KcrYeUnR6U-tWY",
-  "AIzaSyDphErkQ9t-F4TlGFE7oRfMlgb8ZjDVTFE",
-  "AIzaSyCesj2DJTfExZY547raNaNxsy_uZAFjmwA",
-  "AIzaSyCis_Ha5eU3liuGwH5RXbOzou5iAEJ0D5c"
+  ...getEnvironmentKey()
 ].filter(Boolean) as string[];
+
+if (GEMINI_API_KEYS.length === 0) {
+  console.warn("No Gemini API keys found in the environment. Please set GEMINI_API_KEY.");
+}
 
 let currentKeyIndex = 0;
 let _aiInstance: GoogleGenAI | null = null;
 
 function getAI() {
   if (!_aiInstance) {
-    const apiKey = GEMINI_API_KEYS[currentKeyIndex] || "AIzaSyAf-esDwLLnA7HWxnsV4KcrYeUnR6U-tWY";
+    const apiKey = GEMINI_API_KEYS[currentKeyIndex];
+    if (!apiKey) {
+      throw new Error("No valid Gemini API key found. Format should start with 'AIzaSy...'. Please configure it in your environment variables.");
+    }
     _aiInstance = new GoogleGenAI({
       apiKey: apiKey,
       httpOptions: {
@@ -92,7 +102,7 @@ Ensure absolute precision in mathematical operators and chemical formulas using 
 
   return withFailover(async (client) => {
     const result = await client.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-1.5-flash",
       contents: prompt,
     });
     return result.text || "";
@@ -115,7 +125,7 @@ Ensure clean structure and high-yield content. Return a valid JSON list.`;
 
   return withFailover(async (client) => {
     const response = await client.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-1.5-flash",
       contents: prompt,
       config: {
         responseMimeType: "application/json",
@@ -152,7 +162,7 @@ Ensure valid JSON output.`;
 
   return withFailover(async (client) => {
     const response = await client.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-1.5-flash",
       contents: prompt,
       config: {
         responseMimeType: "application/json",
@@ -188,7 +198,7 @@ Ensure all scientific formulas use LaTeX.`;
 
   return withFailover(async (client) => {
     const result = await client.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-1.5-flash",
       contents: prompt,
     });
     return result.text || "";
@@ -218,7 +228,7 @@ Query: ${query || "Please solve the problem in the attached image."}` });
 
   return withFailover(async (client) => {
     const result = await client.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-1.5-flash",
       contents: [{ role: "user", parts }],
     });
     return result.text || "";
@@ -228,7 +238,7 @@ Query: ${query || "Please solve the problem in the attached image."}` });
 export async function chatGemini(messages: any[], systemInstruction?: string) {
   return withFailover(async (client) => {
     const response = await client.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-1.5-flash",
       contents: messages,
       config: {
         systemInstruction: systemInstruction || "You are an all-rounder AI assistant. You can help with code, apps, complex theories, and general knowledge."
@@ -241,7 +251,7 @@ export async function chatGemini(messages: any[], systemInstruction?: string) {
 export async function generateImageDescription(prompt: string) {
   return withFailover(async (client) => {
     const response = await client.models.generateContent({
-      model: "gemini-3.5-flash", 
+      model: "gemini-1.5-flash", 
       contents: `Generate a high-quality, detailed descriptive prompt for an image based on: "${prompt}". 
       Then, explain that as an AI text model, you've optimized the visual description for the renderer.`,
     });
@@ -262,7 +272,7 @@ export async function smartFix(errorContext: string) {
   try {
     return await withFailover(async (client) => {
       const result = await client.models.generateContent({
-        model: "gemini-3.5-flash",
+        model: "gemini-1.5-flash",
         contents: prompt,
       });
       return result.text || "";
@@ -290,7 +300,7 @@ Return a valid JSON array of slides.`;
 
   return withFailover(async (client) => {
     const response = await client.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-1.5-flash",
       contents: prompt,
       config: {
         responseMimeType: "application/json",
@@ -342,7 +352,7 @@ Ensure valid JSON output.`;
 
   return withFailover(async (client) => {
     const response = await client.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-1.5-flash",
       contents: prompt,
       config: {
         responseMimeType: "application/json",

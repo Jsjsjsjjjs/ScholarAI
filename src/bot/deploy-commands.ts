@@ -5,8 +5,10 @@ import { allCommands } from './commands/index.js';
 dotenv.config();
 
 export async function deployCommands() {
-  const token = process.env.DISCORD_BOT_TOKEN;
-  const clientId = process.env.DISCORD_CLIENT_ID;
+  let token = process.env.DISCORD_BOT_TOKEN?.trim() || "";
+  token = token.replace(/^["']|["']$/g, '').trim();
+  let clientId = process.env.DISCORD_CLIENT_ID?.trim() || "";
+  clientId = clientId.replace(/^["']|["']$/g, '').trim();
 
   if (!token || !clientId) {
     console.warn("DISCORD_BOT_TOKEN or DISCORD_CLIENT_ID is missing. Cannot deploy commands.");

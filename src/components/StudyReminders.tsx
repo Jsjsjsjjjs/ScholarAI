@@ -22,6 +22,7 @@ import {
 } from "firebase/firestore";
 import { motion, AnimatePresence } from "motion/react";
 import { cn } from "../lib/utils";
+import { dbMirror } from "../lib/supabase";
 
 interface Reminder {
   id: string;
@@ -77,7 +78,7 @@ export default function StudyReminders() {
 
     setLoading(true);
     try {
-      await addDoc(collection(db, "users", activeUid, "reminders"), {
+      const docRef = await addDoc(collection(db, "users", activeUid, "reminders"), {
         topic,
         subject,
         time,
@@ -85,6 +86,16 @@ export default function StudyReminders() {
         status: "pending",
         createdAt: serverTimestamp()
       });
+
+      // Mirror addition to Supabase
+      dbMirror.mirrorReminderSave(activeUid, docRef.id, {
+        topic,
+        subject,
+        reminderTime: time,
+        reminderDate: date,
+        status: "pending"
+      }).catch(console.error);
+
       setTopic("");
       setSubject("");
       setTime("");
@@ -100,6 +111,9 @@ export default function StudyReminders() {
     if (!activeUid) return;
     try {
       await deleteDoc(doc(db, "users", activeUid, "reminders", id));
+      
+      // Mirror deletion to Supabase
+      dbMirror.mirrorReminderDelete(activeUid, id).catch(console.error);
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, "reminders");
     }

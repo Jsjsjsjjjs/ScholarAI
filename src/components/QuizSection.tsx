@@ -9,6 +9,7 @@ import rehypeKatex from "rehype-katex";
 import { cn } from "../lib/utils";
 import { generateQuiz as clientGenerateQuiz } from "../lib/gemini";
 import { useOnlineStatus, saveQuizToCache, getQuizFromCache, getAllCachedQuizzes, CachedQuiz } from "../lib/offlineCache";
+import { dbMirror } from "../lib/supabase";
 
 interface Question {
   question: string;
@@ -256,6 +257,16 @@ export default function QuizSection({ userData }: { userData?: any }) {
       }
 
       await setDoc(statsRef, updates, { merge: true });
+
+      // Mirror to Supabase!
+      const resolvedNickname = updates.nickname || data.nickname || userData?.nickname || auth.currentUser?.displayName || `Scholar-${activeUid.slice(0, 6)}`;
+      dbMirror.mirrorStatsUpdate(activeUid, {
+        nickname: resolvedNickname,
+        quizCorrect: newCorrect,
+        totalAttempted: newAttempted,
+        accuracy: newAccuracy || 0,
+        timeSpent: data.timeSpent ?? 0
+      }).catch(console.error);
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `stats/${activeUid}`);
     }

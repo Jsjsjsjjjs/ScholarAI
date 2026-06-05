@@ -23,22 +23,18 @@ export default {
 
       if (userSnap.exists) {
         const data = userSnap.data();
-        wins = data.tttWins ?? Math.floor(Math.random() * 8); // seed some initial data for visual richness if zero
-        losses = data.tttLosses ?? Math.floor(Math.random() * 5);
-        ties = data.tttTies ?? Math.floor(Math.random() * 4);
-        elo = data.tttElo ?? (1000 + wins * 25 - losses * 15);
+        wins = data.tttWins ?? 0;
+        losses = data.tttLosses ?? 0;
+        ties = data.tttTies ?? 0;
+        elo = data.tttElo ?? 1200;
         
         const total = wins + losses + ties;
         if (total > 0) {
           winRate = ((wins / total) * 100).toFixed(1) + '%';
         }
       } else {
-        // Build initial stats
-        wins = 3;
-        losses = 2;
-        ties = 1;
-        winRate = '50.0%';
-        elo = 1045;
+        winRate = '0%';
+        elo = 1200;
       }
     } catch (err: any) {
       console.warn('[TicTacToe Stats Warning] database connection, reverting to seeded state:', err.message);

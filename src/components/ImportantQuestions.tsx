@@ -1,5 +1,5 @@
-import { useState, useRef } from "react";
-import { Star, Search, Loader2, Sparkles, Download, Printer, MessageSquare } from "lucide-react";
+import { useState, useRef, useEffect } from "react";
+import { Star, Search, Loader2, Sparkles, Download, Printer, MessageSquare, BookOpen } from "lucide-react";
 import { elementToPdfBlob, sendToDiscordWebhook } from "../lib/discord";
 import Markdown from "react-markdown";
 import remarkMath from "remark-math";
@@ -7,6 +7,7 @@ import rehypeKatex from "rehype-katex";
 import { updateProgress, trackAIUsage } from "../lib/firebase";
 import { generateImportantQuestions } from "../lib/gemini";
 import { cn } from "../lib/utils";
+import { useOnlineStatus, saveImpsToCache, getImpsFromCache, getAllCachedImps, CachedImps } from "../lib/offlineCache";
 
 export default function ImportantQuestions({ userData }: { userData?: any }) {
   const [topic, setTopic] = useState("");
@@ -15,7 +16,13 @@ export default function ImportantQuestions({ userData }: { userData?: any }) {
   const [loading, setLoading] = useState(false);
   const [content, setContent] = useState<string | null>(null);
   const [sharing, setSharing] = useState(false);
+  const [cachedImpsList, setCachedImpsList] = useState<CachedImps[]>([]);
   const contentRef = useRef<HTMLDivElement>(null);
+  const isOnline = useOnlineStatus();
+
+  useEffect(() => {
+    setCachedImpsList(getAllCachedImps());
+  }, [content]);
 
   const subjects = ["Hindi", "English", "Science", "Math", "SST"];
 
@@ -23,12 +30,27 @@ export default function ImportantQuestions({ userData }: { userData?: any }) {
     if (!topic) return;
     setLoading(true);
     try {
+      if (!isOnline) {
+        const cached = getImpsFromCache(subject, topic);
+        if (cached) {
+          setContent(cached);
+          updateProgress(subject, topic, "pyqsViewed");
+          setLoading(false);
+          return;
+        } else {
+          setContent(`# ⚠️ PYQs Not Cached Offline\n\nYou are currently offline, and board questions for **${topic}** (${subject}) are not available. Please connect to the internet to generate this guide.`);
+          setLoading(false);
+          return;
+        }
+      }
+
       const notesContent = await generateImportantQuestions(subject, topic, numQuestions);
 
       // Track usage
       await trackAIUsage(notesContent.length * 4);
 
       setContent(notesContent);
+      saveImpsToCache(subject, topic, notesContent);
       updateProgress(subject, topic, "pyqsViewed");
     } catch (err: any) {
       console.error(err);
@@ -139,11 +161,36 @@ export default function ImportantQuestions({ userData }: { userData?: any }) {
           <button
             onClick={generatePyqs}
             disabled={loading || !topic}
-            className="w-full py-4 bg-orange-500 text-white font-black text-lg rounded-2xl flex items-center justify-center gap-3 hover:bg-orange-600 transition shadow-xl shadow-orange-500/20 disabled:opacity-50"
+            className="w-full py-4 bg-orange-500 text-white font-black text-lg rounded-2xl flex items-center justify-center gap-3 hover:bg-orange-600 transition shadow-xl shadow-orange-500/20 disabled:opacity-50 text-center"
           >
             {loading ? <Loader2 className="animate-spin" /> : <Sparkles />}
             GENERATE BOARD-ESSENTIAL QUESTIONS
           </button>
+
+          {cachedImpsList.length > 0 && (
+            <div className="mt-8 pt-6 border-t border-neutral-800">
+              <h3 className="text-xs font-black uppercase text-neutral-500 tracking-wider mb-3">Recently Saved Offline PYQs</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+                {cachedImpsList.map((item, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => {
+                      setSubject(item.subject);
+                      setTopic(item.topic);
+                      setContent(item.content);
+                    }}
+                    className="p-3 bg-neutral-800/50 hover:bg-neutral-800 border border-neutral-800 hover:border-orange-500/30 rounded-xl text-left transition text-xs"
+                  >
+                    <p className="font-bold text-neutral-300 truncate">{item.topic}</p>
+                    <div className="flex items-center justify-between mt-1 text-[10px] text-neutral-500 uppercase">
+                      <span>{item.subject}</span>
+                      <span className="font-bold text-orange-400">Offline PYQ</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
         <Star className="absolute -top-10 -right-10 text-orange-500/5 rotate-12" size={300} />
       </div>

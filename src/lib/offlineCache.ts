@@ -286,4 +286,64 @@ export function getTestFromCache(subject: string, topic: string): any[] | null {
   }
 }
 
+// Caching support for High-Yield Important Questions (PYQs)
+const IMPS_CACHE_KEY = "scholar_ai_imps_cache";
+
+export interface CachedImps {
+  subject: string;
+  topic: string;
+  content: string;
+  timestamp: number;
+}
+
+export function saveImpsToCache(subject: string, topic: string, content: string) {
+  try {
+    const existingRaw = localStorage.getItem(IMPS_CACHE_KEY);
+    const list: CachedImps[] = existingRaw ? JSON.parse(existingRaw) : [];
+    
+    const filtered = list.filter(item => 
+      !(item.subject.toLowerCase() === subject.toLowerCase() && item.topic.toLowerCase() === topic.toLowerCase())
+    );
+
+    const newItem: CachedImps = {
+      subject,
+      topic,
+      content,
+      timestamp: Date.now()
+    };
+
+    const updated = [newItem, ...filtered].slice(0, 15);
+    localStorage.setItem(IMPS_CACHE_KEY, JSON.stringify(updated));
+  } catch (err) {
+    console.warn("Imps cache write failure:", err);
+  }
+}
+
+export function getImpsFromCache(subject: string, topic: string): string | null {
+  try {
+    const existingRaw = localStorage.getItem(IMPS_CACHE_KEY);
+    if (!existingRaw) return null;
+    const list: CachedImps[] = JSON.parse(existingRaw);
+    
+    const matched = list.find(item => 
+      item.subject.toLowerCase() === subject.toLowerCase() && 
+      item.topic.toLowerCase() === topic.toLowerCase()
+    );
+    return matched ? matched.content : null;
+  } catch (err) {
+    console.warn("Imps cache read failure:", err);
+    return null;
+  }
+}
+
+export function getAllCachedImps(): CachedImps[] {
+  try {
+    const existingRaw = localStorage.getItem(IMPS_CACHE_KEY);
+    return existingRaw ? JSON.parse(existingRaw) : [];
+  } catch {
+    return [];
+  }
+}
+
+
 

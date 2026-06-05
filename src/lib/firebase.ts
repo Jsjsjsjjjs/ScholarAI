@@ -2,6 +2,7 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, signInAnonymously } from 'firebase/auth';
 import { getFirestore, doc, getDocFromServer, serverTimestamp, setDoc, getDoc, updateDoc, increment } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
+import { dbMirror } from './supabase';
 
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
@@ -68,6 +69,12 @@ export async function trackAIUsage(tokenCount: number = 100, isError: boolean = 
       lastAIActivity: serverTimestamp(),
       quotaExhausted: isError
     }, { merge: true });
+
+    // Sync state to Supabase
+    const snap = await getDoc(userRef);
+    if (snap.exists()) {
+      dbMirror.mirrorUserUpdate(activeUid, snap.data()).catch(console.error);
+    }
   } catch (err) {
     handleFirestoreError(err, OperationType.UPDATE, `users/${activeUid}`);
   }
@@ -94,6 +101,12 @@ export async function syncEliteQuota() {
     if (!('totalTokens' in data)) updates.totalTokens = 0;
     
     await setDoc(userRef, updates, { merge: true });
+
+    // Sync to Supabase
+    const updatedSnap = await getDoc(userRef);
+    if (updatedSnap.exists()) {
+      dbMirror.mirrorUserUpdate(activeUid, updatedSnap.data()).catch(console.error);
+    }
   } catch (err) {
     handleFirestoreError(err, OperationType.UPDATE, `users/${activeUid}`);
   }
@@ -109,21 +122,40 @@ export async function updateProgress(subject: string, topic: string, type: 'note
   
   try {
     const snap = await getDoc(progressRef);
+    let progressData: any;
     if (!snap.exists()) {
-      await setDoc(progressRef, {
+      progressData = {
         subject,
         topic,
         notesRead: type === 'notesRead',
         quizTaken: type === 'quizTaken',
         pyqsViewed: type === 'pyqsViewed',
         lastActivity: serverTimestamp()
-      });
+      };
+      await setDoc(progressRef, progressData);
     } else {
+      const existingData = snap.data() || {};
+      progressData = {
+        ...existingData,
+        [type]: true,
+        lastActivity: serverTimestamp()
+      };
       await updateDoc(progressRef, {
         [type]: true,
         lastActivity: serverTimestamp()
       });
     }
+
+    // Mirror to Supabase!
+    dbMirror.mirrorProgressUpdate(activeUid, topicId, {
+      subject,
+      topic,
+      notesRead: progressData.notesRead ?? false,
+      quizTaken: progressData.quizData ?? false, // fallbacks
+      pyqsViewed: progressData.pyqsViewed ?? false,
+      [type]: true // ensure active field is set
+    }).catch(console.error);
+
   } catch (err) {
     handleFirestoreError(err, OperationType.WRITE, progressRef.path);
   }

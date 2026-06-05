@@ -14,6 +14,8 @@ import * as reload from './reload.js';
 import * as forsaken from './forsaken.js';
 import * as admin from './admin.js';
 import * as dashboard from './dashboard.js';
+import * as toggle_tick from './toggle_tick.js';
+import * as ticket from './ticket.js';
 
 export const allCommands: any[] = [
   analytics.default || analytics,
@@ -32,4 +34,6 @@ export const allCommands: any[] = [
   forsaken.default || forsaken,
   admin.default || admin,
   dashboard.default || dashboard,
+  (toggle_tick as any).default || toggle_tick,
+  (ticket as any).default || ticket,
 ];

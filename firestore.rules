@@ -6,36 +6,57 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    // Users and subcollections (doubts, progress, reminders)
+    // Standard helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner', 'developer'];
+    }
+
+    // Users and subcollections (doubts, progress, reminders, offline syncs)
     match /users/{userId} {
-      allow read, write: if true;
+      allow read, write: if isSignedIn();
 
       match /doubts/{doubtId} {
-        allow read, write: if true;
+        allow read, write: if isSignedIn();
       }
 
       match /progress/{topicId} {
-        allow read, write: if true;
+        allow read, write: if isSignedIn();
       }
 
       match /reminders/{reminderId} {
-        allow read, write: if true;
+        allow read, write: if isSignedIn();
+      }
+
+      match /offline_sync/{syncId} {
+        allow read, write: if isSignedIn();
       }
     }
 
     // Stats collection (user stats and leaderboard logs)
     match /stats/{userId} {
-      allow read, write: if true;
+      allow read, write: if isSignedIn();
     }
 
     // Config parameters & application state parameters
     match /system/{docId} {
-      allow read, write: if true;
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // Support incident tickets collection
+    match /tickets/{ticketId} {
+      allow read, write: if isSignedIn();
     }
 
     // Log messages & diagnostic errors
     match /system-logs/{docId} {
-      allow read, write: if true;
+      allow read, write: if isSignedIn() || isAdmin();
     }
   }
 }
